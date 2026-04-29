@@ -33,11 +33,60 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
   const discount    = safeNumber(order.discount);
   const total       = Math.max(0, subtotal + deliveryFee - discount);
 
-  return (
-    <div
-      className="receipt-page mx-auto w-[80mm] bg-white px-[3mm] py-[3mm] font-mono text-[11px] leading-tight text-black"
-      style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
-    >
+ 
+    return (
+    <>
+    
+        <style>{`
+      @media print {
+        .receipt-page {
+          width: 80mm !important;
+          max-width: 80mm !important;
+          padding: 3mm !important;
+          font-size: 11px !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          background: #fff !important;
+        }
+        .receipt-page * {
+          color: #000 !important;
+          background-color: transparent !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .receipt-page .bg-gray-100 {
+          background-color: #f3f4f6 !important;
+        }
+        .receipt-page img {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    `}</style>
+    
+<div
+  className="receipt-page"
+  style={{
+    // 80mm ≈ 302px at 96dpi — use px so ALL browsers render it correctly on screen
+    width: '302px',
+    maxWidth: '302px',
+    margin: '0 auto',
+    background: '#fff',
+    padding: '11px',
+    fontFamily: 'monospace',
+    fontSize: '11px',
+    lineHeight: 1.4,
+    color: '#000',
+    // Force colour printing on ALL mobile browsers
+    WebkitPrintColorAdjust: 'exact',
+    printColorAdjust: 'exact',
+    colorAdjust: 'exact',
+    // Prevent the receipt from being split across pages on mobile
+    pageBreakInside: 'avoid',
+    breakInside: 'avoid',
+  }}
+>
+  
       {/* HEADER */}
       <div className="border-b border-dashed border-black pb-3 text-center">
         <img src={logo} alt="Tahir Fast Food" className="mx-auto mb-2 h-16 w-16 object-contain" />
@@ -145,7 +194,8 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
           <p className="text-[10px] font-black uppercase">— Kitchen Ticket —</p>
         )}
       </div>
-    </div>
+</div>
+    </>
   );
 }
 

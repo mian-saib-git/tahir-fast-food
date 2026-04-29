@@ -187,42 +187,63 @@ export default function App() {
         }
 
         /* ── PRINT STYLES ── */
-        @media print {
-          @page { size: 80mm auto; margin: 0; }
 
-          html, body {
-            margin: 0 !important; padding: 0 !important;
-            background: #fff !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0mm;
+  }
 
-          /* ✅ FIX 4: hide entire app shell, show only receipt */
-          .app-shell > *:not(#printable-wrap) { display: none !important; }
+  /* Reset everything on the page */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
 
-          #printable-wrap {
-            display: block !important;
-            visibility: visible !important;
-            position: static !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
-            margin: 0 auto !important;
-            padding: 0 !important;
-            background: #fff !important;
-            overflow: visible !important;
-            opacity: 1 !important;
-          }
+  /* Hide the entire app UI */
+  body * {
+    visibility: hidden !important;
+  }
 
-          .receipt-copy {
-            width: 80mm !important;
-            page-break-after: always;
-            break-after: page;
-          }
-          .receipt-copy:last-child {
-            page-break-after: auto;
-            break-after: auto;
-          }
-        }
+  /* Show only the receipt and all its children */
+  #printable-wrap,
+  #printable-wrap * {
+    visibility: visible !important;
+  }
+
+  /* Override the screen styles — make it fully static and sized */
+  #printable-wrap {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    z-index: 99999 !important;
+    pointer-events: auto !important;
+  }
+
+  .receipt-copy {
+    width: 80mm !important;
+    page-break-after: always;
+    break-after: page;
+  }
+  .receipt-copy:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}
       `}</style>
 
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -248,22 +269,32 @@ export default function App() {
 
       {/* ✅ FIX 4: No inline display:none — visibility:hidden keeps it in the DOM
           so the print engine can see it, but it's invisible on screen */}
-      <div
-        id="printable-wrap"
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '80mm',
-          background: '#fff',
-          // visible in DOM for print engine, hidden on screen
-          visibility: printJob ? 'visible' : 'hidden',
-          // sits behind everything on screen
-          zIndex: -1,
-          pointerEvents: 'none',
-        }}
-      >
+
+<div
+  id="printable-wrap"
+  aria-hidden="true"
+  style={{
+    // position:absolute keeps it out of layout but still in the paint tree —
+    // mobile Safari will actually render absolute elements when printing,
+    // unlike fixed which it frequently skips.
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '80mm',
+    maxWidth: '80mm',
+    background: '#fff',
+    // opacity:0 is more universally respected than visibility:hidden on mobile
+    // print engines — the element is fully rendered, just invisible on screen.
+    opacity: printJob ? 1 : 0,
+    // pointer-events off so it never intercepts clicks
+    pointerEvents: 'none',
+    // must not clip content — mobile Safari will cut off overflowing receipts
+    overflow: 'visible',
+    // pull it off-screen on screen, but NOT using negative z-index
+    // (negative z-index causes mobile print engines to skip the element)
+    zIndex: 0,
+  }}
+>
         {printJob && printJob.copies.map(copy => (
           <div key={`${printJob.order.id}-${copy}`} className="receipt-copy">
             <PrintableReceipt order={printJob.order} type={copy} />

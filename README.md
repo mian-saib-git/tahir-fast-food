@@ -34,3 +34,4 @@ npm run build
 
 This version stores data in browser localStorage, which is good for demo and single-device usage. For real production use, add authentication, a backend database, printer integration, and WhatsApp Business API integration.
 # tahir-fast-food
+# tahir-fast-food

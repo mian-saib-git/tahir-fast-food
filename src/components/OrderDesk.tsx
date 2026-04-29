@@ -1,0 +1,439 @@
+import html2canvas from 'html2canvas';
+import React, { useMemo, useRef, useState } from 'react';
+import { format } from 'date-fns';
+import { Download, ImageUp, Search, Trash2, Filter, TrendingUp } from 'lucide-react';
+import { cn, money, statusLabel, whatsappPhone } from '../lib/utils';
+import { storage } from '../lib/storage';
+import { DeliveryBoy, Order, OrderStatus } from '../types';
+
+interface OrderDeskProps {
+  orders: Order[];
+  setOrders: (orders: Order[]) => void;
+  onPrint: (order: Order, copies?: Array<'Customer' | 'Kitchen'>) => void;
+  highlightOrderId?: string | null;
+}
+
+const statuses: OrderStatus[] = ['pending','preparing','ready','out_for_delivery','delivered','cancelled'];
+const logo = '/assets/tahir-logo.png';
+const shareBillPhoto = '/assets/tahir-food-background.jpg';
+const RESTAURANT_ORDER_PHONE = '+92 343-1993614';
+
+function safeNumber(value: unknown) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function getFinancials(order: Order) {
+  const subtotal = order.items.reduce((sum, item) => sum + safeNumber(item.price) * safeNumber(item.quantity), 0);
+  const deliveryFee = safeNumber(order.deliveryFee);
+  const discount = safeNumber(order.discount);
+  const total = Math.max(0, subtotal + deliveryFee - discount);
+  return { subtotal, deliveryFee, discount, total };
+}
+
+export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId }: OrderDeskProps) {
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [shareOrder, setShareOrder] = useState<Order | null>(null);
+  const [sendingOrderId, setSendingOrderId] = useState<string | null>(null);
+  const shareCardRef = useRef<HTMLDivElement>(null);
+
+  const riders = storage.getEmployees().filter((e): e is DeliveryBoy => e.role === 'delivery_boy');
+
+  const filtered = useMemo(() => orders.filter(order => {
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const text = `${order.orderNumber} ${order.customerName} ${order.customerPhone} ${order.items.map(i => i.name).join(' ')}`.toLowerCase();
+    return matchesStatus && text.includes(query.toLowerCase());
+  }), [orders, query, statusFilter]);
+
+  const updateRiderStatus = (riderId: string, status: DeliveryBoy['status']) => {
+    const employees = storage.getEmployees();
+    storage.saveEmployees(employees.map(e => e.id === riderId && e.role === 'delivery_boy' ? { ...e, status, active: true } : e));
+  };
+
+  const updateOrder = (id: string, patch: Partial<Order>) => {
+    const current = orders.find(o => o.id === id);
+    if (!current) return;
+    if (current.deliveryBoyId && patch.status) {
+      if (patch.status === 'out_for_delivery') updateRiderStatus(current.deliveryBoyId, 'on_delivery');
+      if (['ready','delivered','cancelled','preparing','pending'].includes(patch.status)) updateRiderStatus(current.deliveryBoyId, 'available');
+    }
+    setOrders(storage.updateOrder(id, { ...patch, updatedAt: Date.now() }));
+  };
+
+  const assignRider = (order: Order, riderId: string) => {
+    if (order.deliveryBoyId && order.deliveryBoyId !== riderId) updateRiderStatus(order.deliveryBoyId, 'available');
+    if (riderId) {
+      updateRiderStatus(riderId, 'on_delivery');
+      setOrders(storage.updateOrder(order.id, { deliveryBoyId: riderId, status: 'out_for_delivery', updatedAt: Date.now() }));
+    } else {
+      if (order.deliveryBoyId) updateRiderStatus(order.deliveryBoyId, 'available');
+      setOrders(storage.updateOrder(order.id, { deliveryBoyId: undefined, status: order.status === 'out_for_delivery' ? 'ready' : order.status, updatedAt: Date.now() }));
+    }
+  };
+
+  const deleteOrder = (order: Order) => {
+    if (!confirm('Delete this order?')) return;
+    if (order.deliveryBoyId) updateRiderStatus(order.deliveryBoyId, 'available');
+    setOrders(storage.deleteOrder(order.id));
+  };
+
+  const downloadAllAndClear = () => {
+    const allOrders = storage.getOrders();
+    if (!allOrders.length) { alert('No orders found to download.'); return; }
+    if (!confirm(`Download ${allOrders.length} orders and clear ALL orders?`)) return;
+    const csvValue = (v: string | number | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [
+      ['Order Number','Date','Customer','Phone','Type','Source','Items','Subtotal','Delivery Fee','Discount','Total','Payment Method','Payment Status','Order Status','Rider','Address','Notes'].join(','),
+      ...allOrders.map(order => {
+        const riderName = riders.find(r => r.id === order.deliveryBoyId)?.name || '';
+        const totals = getFinancials(order);
+        return [csvValue(order.orderNumber),csvValue(format(order.createdAt,'dd/MM/yyyy HH:mm')),csvValue(order.customerName),csvValue(order.customerPhone),csvValue(order.orderType),csvValue(order.orderSource),csvValue(order.items.map(i => `${i.quantity}x ${i.name}`).join(' | ')),csvValue(totals.subtotal),csvValue(totals.deliveryFee),csvValue(totals.discount),csvValue(totals.total),csvValue(order.paymentMethod),csvValue(order.paymentStatus),csvValue(order.status),csvValue(riderName),csvValue(order.customerAddress||''),csvValue(order.notes||'')].join(',');
+      }),
+    ];
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `all-orders-${format(Date.now(),'yyyy-MM-dd-HH-mm')}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    storage.saveOrders([]); setOrders([]);
+    storage.saveEmployees(storage.getEmployees().map(e => e.role === 'delivery_boy' ? { ...e, status: 'available', active: true } : e));
+    alert('All orders downloaded and cleared.');
+  };
+
+  const sendBillImage = async (order: Order) => {
+    try {
+      setSendingOrderId(order.id); setShareOrder(order);
+      await new Promise(r => setTimeout(r, 250));
+      const node = shareCardRef.current;
+      if (!node) throw new Error('Bill image not ready');
+      const canvas = await html2canvas(node, { backgroundColor: '#111111', scale: 2, useCORS: true });
+      const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/png', 1));
+      if (!blob) throw new Error('Could not create image');
+      const file = new File([blob], `bill-${order.orderNumber}.png`, { type: 'image/png' });
+      const nav = navigator as any;
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], title: `Bill ${order.orderNumber}` });
+      } else {
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a'); a.href = url; a.download = `bill-${order.orderNumber}.png`;
+        a.click(); URL.revokeObjectURL(url);
+        window.open(`https://wa.me/${whatsappPhone(order.customerPhone)}`, '_blank', 'noopener,noreferrer');
+        alert('Bill image downloaded. Please attach it in WhatsApp chat.');
+      }
+    } catch (err) {
+      console.error(err); alert('Could not create bill image.');
+    } finally {
+      setSendingOrderId(null); setTimeout(() => setShareOrder(null), 100);
+    }
+  };
+
+  const stats = useMemo(() => ({
+    total: orders.length,
+    preparing: orders.filter(o => o.status === 'preparing').length,
+    delivering: orders.filter(o => o.status === 'out_for_delivery').length,
+  }), [orders]);
+
+  return (
+    <>
+      <style>{`
+        @keyframes newOrderReveal {
+          0% { opacity: 0; transform: translateY(-12px) scale(0.97); }
+          40% { opacity: 1; transform: translateY(2px) scale(1.008); }
+          65% { transform: translateY(-1px) scale(1.003); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes newOrderGlowPulse {
+          0% { box-shadow: 0 0 0 0 rgba(57,213,255,0.55), 0 0 0 0 rgba(57,213,255,0.25), 0 20px 50px rgba(0,0,0,0.12); }
+          30% { box-shadow: 0 0 0 4px rgba(57,213,255,0.35), 0 0 40px rgba(57,213,255,0.22), 0 20px 50px rgba(0,0,0,0.14); }
+          65% { box-shadow: 0 0 0 8px rgba(57,213,255,0.12), 0 0 60px rgba(57,213,255,0.10), 0 20px 50px rgba(0,0,0,0.12); }
+          100% { box-shadow: 0 0 0 0 rgba(57,213,255,0), 0 0 0 rgba(57,213,255,0), 0 20px 50px rgba(0,0,0,0.10); }
+        }
+        @keyframes newOrderBorderShimmer {
+          0%   { border-color: rgba(57,213,255,0.70); }
+          40%  { border-color: rgba(57,213,255,0.90); }
+          100% { border-color: rgba(57,213,255,0.20); }
+        }
+        .order-card-new {
+          animation:
+            newOrderReveal 0.55s cubic-bezier(0.22,1,0.36,1) both,
+            newOrderGlowPulse 2.2s ease 0.2s 2,
+            newOrderBorderShimmer 2.4s ease 0.2s forwards;
+        }
+        .od-search-wrap:focus-within {
+          box-shadow: 0 0 0 3px rgba(57,213,255,0.18), 0 16px 40px rgba(0,0,0,0.10) !important;
+          border-color: rgba(57,213,255,0.45) !important;
+        }
+      `}</style>
+
+      <div className="space-y-6">
+
+        {/* HEADER CARD */}
+        <div style={{ borderRadius: 28, overflow: 'hidden', boxShadow: '0 28px 70px rgba(0,0,0,0.28)', border: '1px solid rgba(244,199,106,0.18)' }}>
+          <div style={{ background: 'linear-gradient(135deg,#1c0905 0%,#4a1a08 55%,#7b3a18 100%)', padding: '22px 28px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: -40, right: 180, width: 200, height: 200, borderRadius: '50%', background: 'rgba(244,199,106,0.08)', filter: 'blur(40px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: -30, right: 40, width: 140, height: 140, borderRadius: '50%', background: 'rgba(57,213,255,0.06)', filter: 'blur(32px)', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ background: 'rgba(244,199,106,0.15)', borderRadius: 16, padding: '10px 12px', border: '1px solid rgba(244,199,106,0.25)', display: 'flex' }}>
+                  <TrendingUp size={22} color="#f4c76a" />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 900, letterSpacing: '0.28em', textTransform: 'uppercase', color: '#f4c76a', opacity: 0.75 }}>Operations</p>
+                  <h2 style={{ margin: '3px 0 0', fontSize: 28, fontWeight: 900, color: '#fff', lineHeight: 1, fontStyle: 'italic' }}>Order Desk</h2>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <HeaderStat label="Total" value={stats.total} accent="#f4c76a" />
+                <HeaderStat label="Preparing" value={stats.preparing} accent="#fb923c" />
+                <HeaderStat label="Delivering" value={stats.delivering} accent="#38d5ff" />
+                <HeaderStat label="Delivered" value={orders.filter(o => o.status === 'delivered').length} accent="#4ade80" />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: 'linear-gradient(145deg,#fff8ee,#fff3e0)', borderTop: '1px solid rgba(244,199,106,0.25)', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div className="od-search-wrap" style={{ flex: 1, minWidth: 220, display: 'flex', alignItems: 'center', background: '#fff', borderRadius: 16, border: '1.5px solid #ead8bd', overflow: 'hidden', height: 48, boxShadow: '0 2px 10px rgba(155,96,48,0.08)', transition: 'border-color 0.2s, box-shadow 0.2s' }}>
+              <div style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#fff5e0,#ffecc8)', borderRight: '1.5px solid #ead8bd', flexShrink: 0 }}>
+                <Search size={16} color="#c0832b" />
+              </div>
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search order no, customer, phone…" style={{ flex: 1, height: 48, border: 'none', background: 'transparent', padding: '0 14px', fontSize: 13, fontWeight: 600, color: '#24110c', outline: 'none', fontFamily: 'inherit' }} />
+              {query && <button onClick={() => setQuery('')} style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: '0 14px', color: '#b08060', fontSize: 18, lineHeight: 1 }}>×</button>}
+            </div>
+
+            <div style={{ flexShrink: 0, minWidth: 155, display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 16, border: '1.5px solid #ead8bd', padding: '0 12px 0 14px', height: 48, boxShadow: '0 2px 10px rgba(155,96,48,0.08)' }}>
+              <Filter size={13} color="#c0832b" style={{ flexShrink: 0 }} />
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: '#24110c', outline: 'none', fontFamily: 'inherit', cursor: 'pointer', appearance: 'none' }}>
+                <option value="all">All Status</option>
+                {statuses.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
+              </select>
+              <ChevronDownIcon />
+            </div>
+
+            <button onClick={downloadAllAndClear} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg,#1c0905,#7b3a18)', color: '#f4c76a', border: 'none', borderRadius: 16, padding: '0 20px', height: 48, fontSize: 11, fontWeight: 900, cursor: 'pointer', letterSpacing: '0.07em', textTransform: 'uppercase', boxShadow: '0 6px 20px rgba(28,9,5,0.30)', transition: 'transform 0.15s, box-shadow 0.15s', whiteSpace: 'nowrap' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 28px rgba(28,9,5,0.38)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(28,9,5,0.30)'; }}>
+              <Download size={14} />
+              Download All & Clear
+            </button>
+          </div>
+        </div>
+
+        {/* ORDER CARDS */}
+        <div className="grid grid-cols-1 gap-5">
+          {filtered.map(order => {
+            const totals = getFinancials(order);
+            const isNew = highlightOrderId === order.id;
+            return (
+              <div key={order.id} className={cn('premium-card overflow-hidden', isNew && 'order-card-new')} style={{ background: 'linear-gradient(145deg, rgba(255,248,238,0.95), rgba(255,255,255,0.84))', border: isNew ? '1.5px solid rgba(57,213,255,0.70)' : undefined }}>
+                {isNew && (
+                  <div style={{ background: 'linear-gradient(90deg,#39d5ff,#0891b2)', padding: '7px 20px', fontSize: 10, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#fff', display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: 13 }}>✦</span>New Order Received<span style={{ fontSize: 13 }}>✦</span>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-[1.05fr_1.4fr_auto] xl:items-center">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-black text-[#24110c]">{order.orderNumber}</h3>
+                      <span className={cn('rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest', statusTone(order.status))}>{statusLabel(order.status)}</span>
+                    </div>
+                    <p className="mt-2 text-sm font-bold">{order.customerName} · {order.customerPhone}</p>
+                    <p className="mt-1 text-xs text-black/40">{format(order.createdAt,'dd MMM yyyy, hh:mm a')} · {order.orderType.replace('_',' ')} · {order.orderSource}</p>
+                    {order.customerAddress && <p className="mt-2 text-xs text-black/50">{order.customerAddress}</p>}
+                  </div>
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-black/5 bg-[#fffaf4] p-3">
+                      <p className="text-sm text-black/60">{order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <select value={order.status} onChange={e => updateOrder(order.id, { status: e.target.value as OrderStatus })} className="input-like">
+                        {statuses.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
+                      </select>
+                      <select value={order.deliveryBoyId || ''} onChange={e => assignRider(order, e.target.value)} className="input-like">
+                        <option value="">No rider</option>
+                        {riders.filter(r => r.status !== 'offline').map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select>
+                      <select value={order.paymentStatus} onChange={e => updateOrder(order.id, { paymentStatus: e.target.value as 'paid'|'unpaid' })} className="input-like">
+                        <option value="unpaid">Unpaid</option>
+                        <option value="paid">Paid</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => updateOrder(order.id, { status: 'ready' })} className="rounded-xl bg-cyan-100 px-4 py-2 text-xs font-black uppercase tracking-wider text-cyan-700">Mark Ready</button>
+                      <button onClick={() => updateOrder(order.id, { status: 'preparing' })} className="rounded-xl bg-orange-100 px-4 py-2 text-xs font-black uppercase tracking-wider text-orange-700">Preparing</button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3 xl:items-end">
+                    <div className="rounded-2xl bg-[#fff2de] px-4 py-3 text-right">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-[#9b6030]">Final Total</p>
+                      <b className="font-mono text-2xl text-[#9b6030]">{money(totals.total)}</b>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => onPrint(order, ['Customer'])} className="rounded-xl bg-[#24110c] px-4 py-2 text-xs font-black uppercase tracking-wider text-[#f4c76a] shadow-md transition hover:-translate-y-0.5">Customer Receipt</button>
+                      <button onClick={() => onPrint(order, ['Kitchen'])} className="rounded-xl bg-[#7b3a18] px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md transition hover:-translate-y-0.5">Kitchen Ticket</button>
+                      <button onClick={() => sendBillImage(order)} className="flex items-center gap-2 rounded-xl bg-[#0891b2] px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md transition hover:-translate-y-0.5">
+                        <ImageUp size={15} />
+                        {sendingOrderId === order.id ? 'Creating…' : 'Send Picture'}
+                      </button>
+                      <button onClick={() => deleteOrder(order)} className="icon-btn text-red-500" title="Delete"><Trash2 size={17} /></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="premium-card p-12 text-center font-semibold text-black/35">No matching orders found.</div>
+          )}
+        </div>
+      </div>
+
+      {shareOrder && (
+        <div style={{ position: 'fixed', left: '-10000px', top: 0, width: 1080, zIndex: -1, pointerEvents: 'none' }}>
+          <div ref={shareCardRef}><ShareBillCard order={shareOrder} /></div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function HeaderStat({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: '10px 16px', minWidth: 72, border: '1px solid rgba(255,255,255,0.10)' }}>
+      <span style={{ fontSize: 24, fontWeight: 900, color: accent, fontFamily: 'monospace', lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: 4, whiteSpace: 'nowrap' }}>{label}</span>
+    </div>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9b6030" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+// ─── ShareBillCard — decorative shapes moved to safe corners away from text ───
+function ShareBillCard({ order }: { order: Order }) {
+  const settings = storage.getSettings();
+  const totals = getFinancials(order);
+  const rider = storage.getEmployees().find(e => e.role === 'delivery_boy' && e.id === order.deliveryBoyId) as DeliveryBoy | undefined;
+
+  return (
+    <div style={{ width: 1080, minHeight: 1520, background: '#0f0f0e', color: '#ffffff', padding: 48, position: 'relative', overflow: 'hidden', fontFamily: "'Sora', 'Nunito', sans-serif" }}>
+
+      {/* ── Decorative shapes — all pushed to far corners / edges away from content ── */}
+
+      {/* Top-left corner cluster */}
+      <div style={{ position: 'absolute', top: -30, left: -30, width: 130, height: 130, background: '#e97b18', borderRadius: 36, transform: 'rotate(18deg)', opacity: 0.85 }} />
+      <div style={{ position: 'absolute', top: 60, left: -20, width: 60, height: 40, background: '#ead25d', borderRadius: 14, transform: 'rotate(-10deg)', opacity: 0.7 }} />
+
+      {/* Top-right corner cluster */}
+      <div style={{ position: 'absolute', top: -25, right: -25, width: 110, height: 110, background: '#7c4a2f', borderRadius: 32, transform: 'rotate(-20deg)', opacity: 0.8 }} />
+      <div style={{ position: 'absolute', top: 70, right: -10, width: 55, height: 35, background: '#fff', borderRadius: 14, transform: 'rotate(30deg)', opacity: 0.6 }} />
+
+      {/* Left mid-edge — between header and table, hugging the edge */}
+      <div style={{ position: 'absolute', top: 620, left: -40, width: 90, height: 150, background: '#ead25d', borderRadius: 28, transform: 'rotate(28deg)', opacity: 0.55 }} />
+      <div style={{ position: 'absolute', top: 740, left: -20, width: 50, height: 32, background: '#8ca52d', borderRadius: 12, transform: 'rotate(-12deg)', opacity: 0.6 }} />
+
+      {/* Right mid-edge */}
+      <div style={{ position: 'absolute', top: 700, right: -35, width: 80, height: 130, background: '#e97b18', borderRadius: 26, transform: 'rotate(-25deg)', opacity: 0.5 }} />
+
+      {/* Bottom-left corner */}
+      <div style={{ position: 'absolute', bottom: -30, left: -30, width: 140, height: 100, background: '#8ca52d', borderRadius: 30, transform: 'rotate(-15deg)', opacity: 0.75 }} />
+      <div style={{ position: 'absolute', bottom: 60, left: -15, width: 60, height: 40, background: '#fff', borderRadius: 16, transform: 'rotate(20deg)', opacity: 0.5 }} />
+
+      {/* Bottom-right corner */}
+      <div style={{ position: 'absolute', bottom: -25, right: -25, width: 120, height: 90, background: '#ead25d', borderRadius: 28, transform: 'rotate(22deg)', opacity: 0.8 }} />
+      <div style={{ position: 'absolute', bottom: 70, right: -10, width: 55, height: 36, background: '#7c4a2f', borderRadius: 14, transform: 'rotate(-30deg)', opacity: 0.65 }} />
+
+      {/* ── Content ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 36, alignItems: 'start', position: 'relative', zIndex: 1 }}>
+        <div>
+          <img src={logo} alt="Logo" style={{ height: 62, width: 62, objectFit: 'contain', marginBottom: 26 }} />
+          <h1 style={{ margin: 0, fontSize: 58, fontWeight: 900, color: '#e97b18', lineHeight: 1 }}>{settings.cafeName || 'Tahir Fast Food'}</h1>
+          <div style={{ marginTop: 14, fontSize: 22, fontWeight: 700, color: '#f5f5f4', lineHeight: 1.45 }}>
+            <div>{settings.tagline || 'Fresh Fast Food & Delivery'}</div>
+            <div>{settings.address || 'Restaurant Address'}</div>
+            <div style={{ marginTop: 14 }}>Customer: {order.customerName}</div>
+            <div>Order #: {order.orderNumber}</div>
+            <div>Order Now: {RESTAURANT_ORDER_PHONE}</div>
+          </div>
+        </div>
+        <div style={{ justifySelf: 'end', width: 350, height: 265, borderRadius: 60, padding: 8, background: '#fff', position: 'relative' }}>
+          <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 52 }}>
+            <img src={shareBillPhoto} alt="Food" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 28, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, position: 'relative', zIndex: 1 }}>
+        {[['Date', format(order.createdAt,'dd MMM yyyy')],['Time', format(order.createdAt,'hh:mm a')],['Type', order.orderType.replace('_',' ')],['Payment', `${String(order.paymentMethod).replace('_',' ')} / ${order.paymentStatus}`]].map(([label, value]) => (
+          <div key={label} style={{ borderRadius: 18, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#f4c76a' }}>{label}</div>
+            <div style={{ marginTop: 8, fontSize: 20, fontWeight: 800, color: '#fff' }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 42, position: 'relative', zIndex: 1 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 150px 120px 150px', background: '#df7e17', color: '#171717', borderRadius: '18px 18px 0 0', padding: '16px 20px', fontSize: 24, fontWeight: 900 }}>
+          <div>No.</div><div>Item Description</div><div style={{ textAlign: 'center' }}>Price</div><div style={{ textAlign: 'center' }}>Qty</div><div style={{ textAlign: 'right' }}>Total</div>
+        </div>
+        <div style={{ background: '#5f5f5f', borderRadius: '0 0 18px 18px', overflow: 'hidden' }}>
+          {order.items.map((item, index) => (
+            <div key={`${item.itemId}-${index}`} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 150px 120px 150px', padding: '18px 20px', color: '#fff', fontSize: 22, borderTop: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)', alignItems: 'center' }}>
+              <div>{index + 1}</div>
+              <div style={{ paddingRight: 16 }}>{item.name}</div>
+              <div style={{ textAlign: 'center' }}>{money(safeNumber(item.price))}</div>
+              <div style={{ textAlign: 'center' }}>{safeNumber(item.quantity)}</div>
+              <div style={{ textAlign: 'right' }}>{money(safeNumber(item.price) * safeNumber(item.quantity))}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 56, display: 'grid', gridTemplateColumns: '1fr 340px', gap: 40, alignItems: 'start', position: 'relative', zIndex: 1 }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>Address</div>
+          <div style={{ fontSize: 18, lineHeight: 1.65, color: '#e7e5e4', maxWidth: 560 }}>{order.customerAddress || 'Address not added'}</div>
+          <div style={{ marginTop: 28 }}>
+            <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>Rider Details</div>
+            <div style={{ fontSize: 18, lineHeight: 1.65, color: '#d6d3d1', maxWidth: 560 }}>
+              {rider ? (<><div>Name: {rider.name}</div><div>Phone: {rider.phone}</div><div>Vehicle: {rider.vehicleNumber || 'Not added'}</div></>) : 'No rider assigned'}
+            </div>
+          </div>
+          <div style={{ marginTop: 28 }}>
+            <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>Order Notes</div>
+            <div style={{ fontSize: 18, lineHeight: 1.65, color: '#d6d3d1', maxWidth: 560 }}>{order.notes || 'No special notes added for this bill.'}</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 26, fontWeight: 900 }}>
+          {[['Sub Total :', money(totals.subtotal)],['Delivery :', money(totals.deliveryFee)],['Discount :', money(totals.discount)]].map(([l, v]) => (
+            <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, gap: 20, color: '#ffffff' }}>
+              <span style={{ color: '#f5f5f4' }}>{l}</span><span>{v}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, gap: 20 }}>
+            <span style={{ color: '#e97b18' }}>Total</span><span style={{ color: '#e97b18' }}>{money(totals.total)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ position: 'absolute', left: 48, right: 48, bottom: 36, zIndex: 1, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 18, textAlign: 'center' }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: '#f4c76a' }}>Software Developed by : AHQAR</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6, color: '#f5f5f4' }}>Contact: +92 318-9995518</div>
+      </div>
+    </div>
+  );
+}
+
+function statusTone(status: OrderStatus) {
+  if (status === 'delivered') return 'bg-emerald-100 text-emerald-700';
+  if (status === 'cancelled') return 'bg-red-100 text-red-700';
+  if (status === 'out_for_delivery') return 'bg-cyan-100 text-cyan-700';
+  if (status === 'ready') return 'bg-cyan-100 text-cyan-700';
+  return 'bg-orange-100 text-orange-700';
+}

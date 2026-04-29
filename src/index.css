@@ -1,0 +1,413 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&family=JetBrains+Mono:wght@500;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  --tc-ink: #1b120c;
+  --tc-espresso: #21110a;
+  --tc-mocha: #4a2614;
+  --tc-walnut: #5f351d;
+  --tc-caramel: #c07832;
+  --tc-gold: #f5b84b;
+  --tc-gold-2: #ffe1a3;
+  --tc-ember: #e05824;
+  --tc-cream: #fff3df;
+  --tc-card: rgba(255, 247, 232, 0.78);
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply font-sans antialiased;
+    color: var(--tc-ink);
+    min-height: 100vh;
+    background:
+      linear-gradient(90deg, rgba(18, 8, 3, 0.82), rgba(75, 40, 20, 0.42) 48%, rgba(18, 8, 3, 0.76)),
+      radial-gradient(circle at 16% 12%, rgba(255, 194, 92, 0.28), transparent 28rem),
+      radial-gradient(circle at 86% 78%, rgba(224, 88, 36, 0.24), transparent 30rem),
+      url('/assets/tahir-food-background.jpg') center top / cover fixed no-repeat;
+    background-color: #1d1009;
+  }
+  button, select { cursor: pointer; }
+  ::selection { background: rgba(245, 184, 75, 0.42); color: var(--tc-espresso); }
+}
+
+@layer components {
+  .app-shell {
+    position: relative;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+  .app-shell::before,
+  .app-shell::after {
+    content: "";
+    position: fixed;
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 9999px;
+    filter: blur(4px);
+    opacity: .88;
+    animation: float-glow 10s ease-in-out infinite alternate;
+  }
+  .app-shell::before {
+    width: 34rem;
+    height: 34rem;
+    top: -10rem;
+    right: -9rem;
+    background: radial-gradient(circle, rgba(245, 184, 75, .34), transparent 68%);
+  }
+  .app-shell::after {
+    width: 30rem;
+    height: 30rem;
+    bottom: -12rem;
+    left: 18rem;
+    background: radial-gradient(circle, rgba(224, 88, 36, .22), transparent 70%);
+    animation-delay: -2s;
+  }
+
+  .premium-card {
+    @apply rounded-[2rem] border shadow-2xl backdrop-blur-xl transition-all duration-300;
+    background:
+      linear-gradient(145deg, rgba(255,248,235,.91), rgba(255,235,203,.70)),
+      linear-gradient(45deg, rgba(95, 53, 29, .08), transparent 45%);
+    border-color: rgba(255, 224, 170, 0.55);
+    box-shadow: 0 26px 80px rgba(17, 8, 3, 0.24), 0 0 0 1px rgba(255,255,255,.18), inset 0 1px 0 rgba(255,255,255,.72);
+  }
+  .premium-card:hover {
+    box-shadow: 0 34px 100px rgba(17, 8, 3, 0.30), 0 0 34px rgba(245,184,75,.18), inset 0 1px 0 rgba(255,255,255,.86);
+  }
+  .glass-panel {
+    @apply rounded-[2rem] border backdrop-blur-2xl;
+    background: linear-gradient(135deg, rgba(255,242,218,.72), rgba(255,219,163,.28));
+    border-color: rgba(255,224,170,.5);
+    box-shadow: 0 20px 70px rgba(17, 8, 3, .22);
+  }
+  .hero-panel {
+    @apply relative overflow-hidden rounded-[2.25rem] p-5 text-white shadow-2xl lg:p-7;
+    min-height: 440px;
+    background:
+      linear-gradient(180deg, rgba(17, 8, 3, .78), rgba(45, 24, 12, .60)),
+      radial-gradient(circle at 16% 16%, rgba(255, 225, 163, .18), transparent 26rem),
+      url('/assets/tahir-food-background.jpg') center center / cover no-repeat;
+    box-shadow: 0 36px 110px rgba(17, 8, 3, .45), 0 0 0 1px rgba(255,224,170,.18);
+  }
+  .hero-panel::before {
+    content: "";
+    position: absolute;
+    inset: -50%;
+    background: linear-gradient(115deg, transparent 38%, rgba(255,232,177,.14), transparent 62%);
+    animation: shimmer 8s linear infinite;
+  }
+  .hero-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,.08), transparent 22%, rgba(0,0,0,.22));
+  }
+  .hero-panel > * { position: relative; z-index: 1; }
+  .input-like {
+    @apply h-12 rounded-2xl border px-4 text-sm font-semibold outline-none transition duration-200;
+    background: rgba(255,247,232,.84);
+    border-color: rgba(95, 53, 29, .16);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
+  }
+  .input-like:focus {
+    border-color: rgba(245,184,75,.86);
+    box-shadow: 0 0 0 5px rgba(245,184,75,.17), inset 0 1px 0 rgba(255,255,255,.8);
+  }
+  .dark-input {
+    @apply h-12 rounded-2xl border px-4 text-sm font-semibold text-white outline-none transition placeholder:text-white/30;
+    background: rgba(255,232,177,.08);
+    border-color: rgba(255,232,177,.16);
+  }
+  .dark-input:focus { border-color: rgba(245,184,75,.76); box-shadow: 0 0 0 5px rgba(245,184,75,.13); }
+  .primary-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-xs font-black uppercase tracking-widest text-[#21110a] shadow-xl transition duration-300 active:scale-[0.98];
+    background: linear-gradient(135deg, var(--tc-gold-2), var(--tc-gold) 56%, #d7892e);
+    box-shadow: 0 16px 38px rgba(245,184,75,.34), inset 0 1px 0 rgba(255,255,255,.45);
+  }
+  .primary-btn:hover { transform: translateY(-2px); box-shadow: 0 22px 48px rgba(245,184,75,.44), 0 0 30px rgba(245,184,75,.24); }
+  .secondary-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border px-5 py-3.5 text-xs font-black uppercase tracking-widest text-[#21110a] shadow-sm transition duration-300 active:scale-[0.98];
+    background: rgba(255,247,232,.82);
+    border-color: rgba(95, 53, 29, .16);
+  }
+  .secondary-btn:hover { transform: translateY(-2px); background: #fff4df; box-shadow: 0 18px 45px rgba(17, 8, 3, .14); }
+  .whatsapp-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-xs font-black uppercase tracking-widest text-white shadow-xl transition duration-300 active:scale-[0.98];
+    background: linear-gradient(135deg, #18bd7f, #087953);
+    box-shadow: 0 16px 38px rgba(20,184,133,.24);
+  }
+  .whatsapp-btn:hover { transform: translateY(-2px); box-shadow: 0 22px 48px rgba(20,184,133,.34), 0 0 24px rgba(56,215,182,.22); }
+  .icon-btn {
+    @apply inline-flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm transition duration-300;
+    background: rgba(255,247,232,.84);
+    border-color: rgba(95, 53, 29, .14);
+    color: var(--tc-espresso);
+  }
+  .icon-btn:hover { transform: translateY(-2px); background: #fff4df; box-shadow: 0 14px 34px rgba(17, 8, 3, .16); }
+  .soft-chip {
+    @apply rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest;
+    background: rgba(245,184,75,.22);
+    color: #74400f;
+  }
+  .fade-up { animation: fade-up .55s cubic-bezier(.22,1,.36,1) both; }
+  .floaty { animation: floaty 4.5s ease-in-out infinite; }
+  .glow-line { box-shadow: inset 0 -1px 0 rgba(245,184,75,.34), 0 1px 0 rgba(255,255,255,.5); }
+}
+
+@keyframes shimmer { from { transform: translateX(-35%) rotate(8deg); } to { transform: translateX(35%) rotate(8deg); } }
+@keyframes float-glow { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(18px, 22px, 0) scale(1.06); } }
+@keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+
+@media print {
+  body * { visibility: hidden !important; }
+  #printable-wrap, #printable-wrap * { visibility: visible !important; }
+  #printable-wrap {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    background: white;
+  }
+  .receipt-page { width: 80mm; min-height: auto; break-inside: avoid; page-break-inside: avoid; }
+  .tear-line { width: 80mm; border-top: 1px dashed #000; margin: 8mm 0; }
+  @page { size: 80mm auto; margin: 0; }
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.input-premium {
+  height: 3.25rem;
+  border-radius: 1rem;
+  border: 1px solid #e4cfac;
+  background: #ffffff;
+  padding: 0 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #24110c;
+  outline: none;
+  transition: 0.2s ease;
+}
+
+.input-premium::placeholder {
+  color: rgba(155, 122, 96, 0.58);
+}
+
+.input-premium:focus {
+  border-color: #f4c76a;
+  box-shadow: 0 0 0 3px rgba(244, 199, 106, 0.25);
+}
+
+/* Premium New Order scrollbars */
+.order-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 184, 75, 0.55) rgba(255, 245, 232, 0.12);
+}
+
+.order-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.order-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 245, 232, 0.12);
+  border-radius: 999px;
+}
+
+.order-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #ffe1a3, #f5b84b);
+  border-radius: 999px;
+}
+
+.input-premium {
+  height: 3.25rem;
+  border-radius: 1rem;
+  border: 1px solid #e4cfac;
+  background: #ffffff;
+  padding: 0 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #24110c;
+  outline: none;
+  transition: 0.2s ease;
+}
+
+.input-premium::placeholder {
+  color: rgba(155, 122, 96, 0.58);
+}
+
+.input-premium:focus {
+  border-color: #f4c76a;
+  box-shadow: 0 0 0 3px rgba(244, 199, 106, 0.25);
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #printable-wrap,
+  #printable-wrap * {
+    visibility: visible !important;
+  }
+
+  #printable-wrap {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 80mm !important;
+    background: white !important;
+    display: block !important;
+  }
+
+  .receipt-copy {
+    width: 80mm !important;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .receipt-copy:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .receipt-page {
+    width: 80mm !important;
+    box-shadow: none !important;
+  }
+
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+}
+
+.order-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 184, 75, 0.65) rgba(255, 245, 232, 0.08);
+}
+
+.order-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.order-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 245, 232, 0.08);
+  border-radius: 999px;
+}
+
+.order-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #ffe1a3, #f5b84b);
+  border-radius: 999px;
+}
+
+.input-premium {
+  height: 3.25rem;
+  border-radius: 1rem;
+  border: 1px solid #e4cfac;
+  background: #ffffff;
+  padding: 0 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #24110c;
+  outline: none;
+  transition: 0.2s ease;
+}
+
+.input-premium::placeholder {
+  color: rgba(155, 122, 96, 0.58);
+}
+
+.input-premium:focus {
+  border-color: #f4c76a;
+  box-shadow: 0 0 0 3px rgba(244, 199, 106, 0.25);
+}
+
+.primary-btn,
+.secondary-btn,
+.whatsapp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  border-radius: 1rem;
+  padding: 0.8rem 1rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  transition: 0.22s ease;
+}
+
+.primary-btn {
+  background: linear-gradient(90deg, #ffe19a, #f4ae3f);
+  color: #24110c;
+  box-shadow: 0 14px 32px rgba(244, 174, 63, 0.25);
+}
+
+.secondary-btn {
+  background: #ffffff;
+  color: #24110c;
+  box-shadow: 0 10px 22px rgba(94, 47, 17, 0.1);
+  border: 1px solid #ead8bd;
+}
+
+.whatsapp-btn {
+  background: linear-gradient(90deg, #16a86f, #0d8f5d);
+  color: #ffffff;
+  box-shadow: 0 14px 32px rgba(19, 166, 106, 0.25);
+}
+
+.primary-btn:hover,
+.secondary-btn:hover,
+.whatsapp-btn:hover {
+  transform: translateY(-2px);
+}
+
+@keyframes cartItemIn {
+  from {
+    opacity: 0;
+    transform: translateX(22px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-cart-item {
+  animation: cartItemIn 0.28s ease both;
+}
+
+@keyframes billPop {
+  0% {
+    transform: scale(0.94);
+    opacity: 0.65;
+  }
+  60% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-bill-pop {
+  animation: billPop 0.28s ease both;
+}

@@ -1,10 +1,10 @@
 import html2canvas from 'html2canvas';
 import React, { useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { Download, ImageUp, Search, Trash2, Filter, TrendingUp } from 'lucide-react';
+import { Download, ImageUp, Search, Trash2, Filter, TrendingUp, Edit3, X, PlusCircle } from 'lucide-react';
 import { cn, money, statusLabel, whatsappPhone } from '../lib/utils';
 import { storage } from '../lib/storage';
-import { DeliveryBoy, Order, OrderStatus } from '../types';
+import { DeliveryBoy, Order, OrderStatus, MenuItem } from '../types';
 
 interface OrderDeskProps {
   orders: Order[];
@@ -31,12 +31,313 @@ function getFinancials(order: Order) {
   return { subtotal, deliveryFee, discount, total };
 }
 
+// ══════════════════════════════════════
+//  EDIT ORDER MODAL – Search bar fixed
+// ══════════════════════════════════════
+function EditOrderModal({
+  order,
+  onSave,
+  onClose,
+}: {
+  order: Order;
+  onSave: (updatedOrder: Order) => void;
+  onClose: () => void;
+}) {
+  const menuItems: MenuItem[] = storage.getMenu();
+  const [items, setItems] = useState(order.items.map(item => ({ ...item })));
+  const [newItemId, setNewItemId] = useState('');
+  const [newQty, setNewQty] = useState(1);
+  const [newNote, setNewNote] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const filteredMenu = menuItems.filter(m =>
+    m.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const updateItem = (index: number, patch: Partial<Order['items'][0]>) => {
+    setItems(prev => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  const removeItem = (index: number) => {
+    setItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddItem = () => {
+    if (!newItemId) return;
+    const menuItem = menuItems.find(m => m.id === newItemId);
+    if (!menuItem) return;
+    const newItem = {
+      itemId: menuItem.id,
+      name: menuItem.name,
+      price: menuItem.price,
+      quantity: newQty,
+      note: newNote,
+    };
+    setItems(prev => [...prev, newItem]);
+    setNewItemId('');
+    setNewQty(1);
+    setNewNote('');
+    setSearchTerm('');
+    setShowDropdown(false);
+  };
+
+  const handleSave = () => {
+    const validItems = items.filter(i => i.quantity > 0 && i.itemId);
+    const updatedOrder: Order = {
+      ...order,
+      items: validItems,
+      updatedAt: Date.now(),
+    };
+    onSave(updatedOrder);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-[2rem] bg-white shadow-2xl p-0 max-h-[90vh] overflow-y-auto ring-1 ring-black/5">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#2a0d06] to-[#7b3a18] p-6 rounded-t-[2rem] text-white flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold tracking-[0.2em] text-amber-300 uppercase">Update Order</p>
+            <h2 className="text-2xl font-black mt-1">#{order.orderNumber}</h2>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition">
+            <X size={20} className="text-white" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Current Items */}
+          <section>
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Current Items</h3>
+            <div className="space-y-3">
+              {items.map((item, i) => (
+                <div
+                  key={`${item.itemId}-${i}`}
+                  className="flex items-start gap-4 rounded-2xl border border-gray-100 bg-[#fefdf9] p-4 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-lg text-[#3b1e0e]">{item.name}</span>
+                      <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                        {money(item.price)}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Qty</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.quantity}
+                          onChange={e => updateItem(i, { quantity: Number(e.target.value) || 0 })}
+                          className="w-20 rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-[150px]">
+                        <label className="text-xs font-bold uppercase tracking-wider text-gray-500">Note</label>
+                        <input
+                          value={item.note || ''}
+                          onChange={e => updateItem(i, { note: e.target.value })}
+                          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none"
+                          placeholder="Extra cheese, no onions…"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeItem(i)}
+                    className="self-center p-2 rounded-full text-red-400 hover:bg-red-50 hover:text-red-600 transition"
+                    title="Remove item"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              ))}
+              {items.length === 0 && (
+                <p className="text-sm text-gray-400 italic py-4 text-center">No items in this order yet.</p>
+              )}
+            </div>
+          </section>
+
+          {/* Add New Item – search bar fixed */}
+          <section className="rounded-2xl bg-gradient-to-br from-amber-50 to-white border border-amber-100 p-6 shadow-inner">
+            <div className="flex items-center gap-2 mb-4">
+              <PlusCircle size={18} className="text-amber-500" />
+              <h3 className="text-xs font-black uppercase tracking-widest text-amber-700">Add New Item</h3>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-[2fr_auto_1fr] gap-4 items-end">
+              {/* Search input */}
+              <div className="relative">
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Item</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    value={newItemId ? menuItems.find(m => m.id === newItemId)?.name || '' : searchTerm}
+                    placeholder="Search pizza, burger…"
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setNewItemId('');
+                      setShowDropdown(true);
+                    }}
+                    onFocus={() => setShowDropdown(true)}
+                    style={{
+                      width: '100%',
+                      borderRadius: '12px',
+                      border: '1px solid #e2e8f0',
+                      padding: '12px 40px 12px 16px',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      background: '#fff',
+                      outline: 'none',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                      transition: 'border-color 0.2s',
+                    }}
+                  />
+                  {newItemId && (
+                    <button
+                      onClick={() => { setNewItemId(''); setSearchTerm(''); }}
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        fontSize: '18px',
+                        fontWeight: 700,
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        lineHeight: 1,
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown */}
+                {showDropdown && !newItemId && (
+                  <>
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      zIndex: 20,
+                      background: '#fff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '12px',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                      marginTop: '4px',
+                    }}>
+                      {filteredMenu.length === 0 ? (
+                        <div style={{ padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
+                          No items found
+                        </div>
+                      ) : (
+                        filteredMenu.map(m => (
+                          <div
+                            key={m.id}
+                            onClick={() => {
+                              setNewItemId(m.id);
+                              setSearchTerm('');
+                              setShowDropdown(false);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #f1f5f9',
+                              transition: 'background 0.15s',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            <span style={{ fontWeight: 600, color: '#1e293b' }}>{m.name}</span>
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#d97706' }}>
+                              {money(m.price)}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div
+                      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 19 }}
+                      onClick={() => setShowDropdown(false)}
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* Quantity */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Qty</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={newQty}
+                  onChange={e => setNewQty(Number(e.target.value) || 1)}
+                  className="w-20 rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm font-bold focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none"
+                />
+              </div>
+
+              {/* Note */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Note</label>
+                <input
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  placeholder="Optional"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleAddItem}
+              disabled={!newItemId}
+              className="mt-5 flex items-center gap-2 rounded-xl bg-[#7b3a18] text-white px-6 py-3 text-sm font-bold shadow-lg shadow-[#7b3a18]/20 hover:bg-[#5a2610] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+            >
+              <PlusCircle size={16} />
+              Add Item
+            </button>
+          </section>
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-100 p-6 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-8 py-3 rounded-xl bg-[#1c0905] text-amber-400 text-sm font-black shadow-lg hover:bg-[#2a0d06] transition-all"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main OrderDesk component ───
 export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId }: OrderDeskProps) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [shareOrder, setShareOrder] = useState<Order | null>(null);
   const [sendingOrderId, setSendingOrderId] = useState<string | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   const riders = storage.getEmployees().filter((e): e is DeliveryBoy => e.role === 'delivery_boy');
 
@@ -76,6 +377,11 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
     if (!confirm('Delete this order?')) return;
     if (order.deliveryBoyId) updateRiderStatus(order.deliveryBoyId, 'available');
     setOrders(storage.deleteOrder(order.id));
+  };
+
+  const handleEditSave = (updatedOrder: Order) => {
+    setOrders(storage.updateOrder(updatedOrder.id, updatedOrder));
+    setEditingOrder(null);
   };
 
   const downloadAllAndClear = () => {
@@ -136,6 +442,14 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
 
   return (
     <>
+      {editingOrder && (
+        <EditOrderModal
+          order={editingOrder}
+          onSave={handleEditSave}
+          onClose={() => setEditingOrder(null)}
+        />
+      )}
+
       <style>{`
         @keyframes newOrderReveal {
           0% { opacity: 0; transform: translateY(-12px) scale(0.97); }
@@ -167,7 +481,6 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
       `}</style>
 
       <div className="space-y-6">
-
         {/* HEADER CARD */}
         <div style={{ borderRadius: 28, overflow: 'hidden', boxShadow: '0 28px 70px rgba(0,0,0,0.28)', border: '1px solid rgba(244,199,106,0.18)' }}>
           <div style={{ background: 'linear-gradient(135deg,#1c0905 0%,#4a1a08 55%,#7b3a18 100%)', padding: '22px 28px', position: 'relative', overflow: 'hidden' }}>
@@ -269,6 +582,12 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
                       <b className="font-mono text-2xl text-[#9b6030]">{money(totals.total)}</b>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setEditingOrder(order)}
+                        className="rounded-xl bg-[#f4c76a] px-4 py-2 text-xs font-black uppercase tracking-wider text-[#1c0905] shadow-md transition hover:-translate-y-0.5"
+                      >
+                        <Edit3 size={14} className="inline mr-1" /> Edit
+                      </button>
                       <button onClick={() => onPrint(order, ['Customer'])} className="rounded-xl bg-[#24110c] px-4 py-2 text-xs font-black uppercase tracking-wider text-[#f4c76a] shadow-md transition hover:-translate-y-0.5">Customer Receipt</button>
                       <button onClick={() => onPrint(order, ['Kitchen'])} className="rounded-xl bg-[#7b3a18] px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md transition hover:-translate-y-0.5">Kitchen Ticket</button>
                       <button onClick={() => sendBillImage(order)} className="flex items-center gap-2 rounded-xl bg-[#0891b2] px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md transition hover:-translate-y-0.5">
@@ -297,24 +616,7 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
   );
 }
 
-function HeaderStat({ label, value, accent }: { label: string; value: number; accent: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: '10px 16px', minWidth: 72, border: '1px solid rgba(255,255,255,0.10)' }}>
-      <span style={{ fontSize: 24, fontWeight: 900, color: accent, fontFamily: 'monospace', lineHeight: 1 }}>{value}</span>
-      <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: 4, whiteSpace: 'nowrap' }}>{label}</span>
-    </div>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9b6030" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-// ─── ShareBillCard — decorative shapes moved to safe corners away from text ───
+// ─── ShareBillCard (unchanged from previous, includes your requested changes) ───
 function ShareBillCard({ order }: { order: Order }) {
   const settings = storage.getSettings();
   const totals = getFinancials(order);
@@ -322,45 +624,45 @@ function ShareBillCard({ order }: { order: Order }) {
 
   return (
     <div style={{ width: 1080, minHeight: 1520, background: '#0f0f0e', color: '#ffffff', padding: 48, position: 'relative', overflow: 'hidden', fontFamily: "'Sora', 'Nunito', sans-serif" }}>
-
-      {/* ── Decorative shapes — all pushed to far corners / edges away from content ── */}
-
-      {/* Top-left corner cluster */}
+      {/* Decorative shapes */}
       <div style={{ position: 'absolute', top: -30, left: -30, width: 130, height: 130, background: '#e97b18', borderRadius: 36, transform: 'rotate(18deg)', opacity: 0.85 }} />
       <div style={{ position: 'absolute', top: 60, left: -20, width: 60, height: 40, background: '#ead25d', borderRadius: 14, transform: 'rotate(-10deg)', opacity: 0.7 }} />
-
-      {/* Top-right corner cluster */}
       <div style={{ position: 'absolute', top: -25, right: -25, width: 110, height: 110, background: '#7c4a2f', borderRadius: 32, transform: 'rotate(-20deg)', opacity: 0.8 }} />
       <div style={{ position: 'absolute', top: 70, right: -10, width: 55, height: 35, background: '#fff', borderRadius: 14, transform: 'rotate(30deg)', opacity: 0.6 }} />
-
-      {/* Left mid-edge — between header and table, hugging the edge */}
       <div style={{ position: 'absolute', top: 620, left: -40, width: 90, height: 150, background: '#ead25d', borderRadius: 28, transform: 'rotate(28deg)', opacity: 0.55 }} />
       <div style={{ position: 'absolute', top: 740, left: -20, width: 50, height: 32, background: '#8ca52d', borderRadius: 12, transform: 'rotate(-12deg)', opacity: 0.6 }} />
-
-      {/* Right mid-edge */}
       <div style={{ position: 'absolute', top: 700, right: -35, width: 80, height: 130, background: '#e97b18', borderRadius: 26, transform: 'rotate(-25deg)', opacity: 0.5 }} />
-
-      {/* Bottom-left corner */}
       <div style={{ position: 'absolute', bottom: -30, left: -30, width: 140, height: 100, background: '#8ca52d', borderRadius: 30, transform: 'rotate(-15deg)', opacity: 0.75 }} />
       <div style={{ position: 'absolute', bottom: 60, left: -15, width: 60, height: 40, background: '#fff', borderRadius: 16, transform: 'rotate(20deg)', opacity: 0.5 }} />
-
-      {/* Bottom-right corner */}
       <div style={{ position: 'absolute', bottom: -25, right: -25, width: 120, height: 90, background: '#ead25d', borderRadius: 28, transform: 'rotate(22deg)', opacity: 0.8 }} />
       <div style={{ position: 'absolute', bottom: 70, right: -10, width: 55, height: 36, background: '#7c4a2f', borderRadius: 14, transform: 'rotate(-30deg)', opacity: 0.65 }} />
 
-      {/* ── Content ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 36, alignItems: 'start', position: 'relative', zIndex: 1 }}>
         <div>
           <img src={logo} alt="Logo" style={{ height: 62, width: 62, objectFit: 'contain', marginBottom: 26 }} />
-          <h1 style={{ margin: 0, fontSize: 58, fontWeight: 900, color: '#e97b18', lineHeight: 1 }}>{settings.cafeName || 'Tahir Fast Food'}</h1>
-          <div style={{ marginTop: 14, fontSize: 22, fontWeight: 700, color: '#f5f5f4', lineHeight: 1.45 }}>
-            <div>{settings.tagline || 'Fresh Fast Food & Delivery'}</div>
-            <div>{settings.address || 'Restaurant Address'}</div>
-            <div style={{ marginTop: 14 }}>Customer: {order.customerName}</div>
+          <h1 style={{ margin: 0, fontSize: 58, fontWeight: 900, color: '#e97b18', lineHeight: 1 }}>
+            {settings.cafeName || 'Tahir Fast Food'}
+          </h1>
+          <p style={{
+            margin: '8px 0 0',
+            fontSize: 22,
+            fontWeight: 600,
+            fontFamily: "'Dancing Script', 'Pacifico', 'Brush Script MT', cursive",
+            color: '#f4c76a',
+            letterSpacing: '0.5px',
+            fontStyle: 'italic'
+          }}>
+            Main Namak Mandi Chowk Peshawar
+          </p>
+          <div style={{ marginTop: 18, fontSize: 22, fontWeight: 700, color: '#f5f5f4', lineHeight: 1.45 }}>
+            <div style={{ marginTop: 14 }}>Customer Name: {order.customerName}</div>
             <div>Order #: {order.orderNumber}</div>
-            <div>Order Now: {RESTAURANT_ORDER_PHONE}</div>
+            <div style={{ marginTop: 6, fontWeight: 700 }}>
+              Customer Contact: {order.customerPhone}
+            </div>
           </div>
         </div>
+
         <div style={{ justifySelf: 'end', width: 350, height: 265, borderRadius: 60, padding: 8, background: '#fff', position: 'relative' }}>
           <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 52 }}>
             <img src={shareBillPhoto} alt="Food" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -385,7 +687,13 @@ function ShareBillCard({ order }: { order: Order }) {
           {order.items.map((item, index) => (
             <div key={`${item.itemId}-${index}`} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 150px 120px 150px', padding: '18px 20px', color: '#fff', fontSize: 22, borderTop: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)', alignItems: 'center' }}>
               <div>{index + 1}</div>
-              <div style={{ paddingRight: 16 }}>{item.name}</div>
+              <div style={{ paddingRight: 16 }}>
+                <div>{item.name}</div>
+                {safeNumber(item.quantity) > 1 && (
+                  <div style={{ fontSize: 16, color: '#d6d3d1', marginTop: 4 }}>{money(safeNumber(item.price))} each</div>
+                )}
+                {item.note && <div style={{ fontSize: 14, color: '#a8a29e', marginTop: 2, fontStyle: 'italic' }}>Note: {item.note}</div>}
+              </div>
               <div style={{ textAlign: 'center' }}>{money(safeNumber(item.price))}</div>
               <div style={{ textAlign: 'center' }}>{safeNumber(item.quantity)}</div>
               <div style={{ textAlign: 'right' }}>{money(safeNumber(item.price) * safeNumber(item.quantity))}</div>
@@ -421,12 +729,28 @@ function ShareBillCard({ order }: { order: Order }) {
         </div>
       </div>
 
-      {/* Footer */}
       <div style={{ position: 'absolute', left: 48, right: 48, bottom: 36, zIndex: 1, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 18, textAlign: 'center' }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: '#f4c76a' }}>Software Developed by : AHQAR</div>
         <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6, color: '#f5f5f4' }}>Contact: +92 318-9995518</div>
       </div>
     </div>
+  );
+}
+
+function HeaderStat({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: '10px 16px', minWidth: 72, border: '1px solid rgba(255,255,255,0.10)' }}>
+      <span style={{ fontSize: 24, fontWeight: 900, color: accent, fontFamily: 'monospace', lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: 4, whiteSpace: 'nowrap' }}>{label}</span>
+    </div>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9b6030" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
   );
 }
 

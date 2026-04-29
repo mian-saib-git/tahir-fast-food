@@ -1,7 +1,7 @@
-// App.tsx — full fixed file
+// App.tsx — printing via hidden iframe (no pop‑up, preview appears immediately)
 
 import LoginPage from './components/LoginPage';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import OrderForm from './components/OrderForm';
@@ -19,7 +19,6 @@ const sectionsPageBg  = '/assets/tahir-food-background.jpg';
 type PrintCopy = 'Customer' | 'Kitchen';
 
 export default function App() {
-  // ✅ FIX 1: useState is now INSIDE the component where it belongs
   const [isLoggedIn, setIsLoggedIn] = useState(
     () => sessionStorage.getItem('tahir_logged_in') === 'true'
   );
@@ -28,35 +27,114 @@ export default function App() {
   const [printJob,     setPrintJob]     = useState<{ order: Order; copies: PrintCopy[] } | null>(null);
   const [recentOrderId, setRecentOrderId] = useState<string | null>(null);
 
-  // ✅ FIX 2: ALL hooks come before any early return
+  const printFrameRef = useRef<HTMLIFrameElement | null>(null);
+
   useEffect(() => {
     setOrders(storage.getOrders());
   }, []);
 
   useEffect(() => {
     const syncOrders  = () => setOrders(storage.getOrders());
-    const clearPrint  = () => setPrintJob(null);
     window.addEventListener('focus',      syncOrders);
     window.addEventListener('storage',    syncOrders);
-    window.addEventListener('afterprint', clearPrint);
     return () => {
       window.removeEventListener('focus',      syncOrders);
       window.removeEventListener('storage',    syncOrders);
-      window.removeEventListener('afterprint', clearPrint);
     };
   }, []);
 
-  // ✅ FIX 3: useEffect watches printJob and fires print AFTER React renders the receipt
+  // ══════════════════════════════════════════
+  //  PRINTING — reliable iframe method
+  // ══════════════════════════════════════════
   useEffect(() => {
     if (!printJob) return;
-    // rAF guarantees the browser has painted #printable-wrap before the dialog opens
-    const id = requestAnimationFrame(() => {
-      window.print();
-    });
-    return () => cancelAnimationFrame(id);
+
+    const sourceEl = document.getElementById('print-source');
+    if (!sourceEl) return;
+
+    // Create a hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.border = 'none';
+    iframe.title = 'Print Frame';
+    document.body.appendChild(iframe);
+    printFrameRef.current = iframe;
+
+    const iframeDoc = iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      document.body.removeChild(iframe);
+      setPrintJob(null);
+      return;
+    }
+
+    // Write the receipt HTML directly into the iframe
+    iframeDoc.open();
+    iframeDoc.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - ${printJob.order.orderNumber}</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            font-family: monospace;
+            text-align: center;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            color-adjust: exact;
+          }
+          .receipt-copy {
+            display: inline-block;
+            width: 80mm;
+            max-width: 80mm;
+            margin: 0 auto;
+            text-align: left;
+            page-break-after: always;
+          }
+          .receipt-copy:last-child {
+            page-break-after: auto;
+          }
+        </style>
+      </head>
+      <body>${sourceEl.innerHTML}</body>
+      </html>
+    `);
+    iframeDoc.close();
+
+    // After content loads, trigger print and clean up
+    iframe.onload = () => {
+      setTimeout(() => {
+        iframe.contentWindow?.print();
+        // Clean up after print is done (or after a timeout)
+        iframe.contentWindow?.addEventListener('afterprint', () => {
+          document.body.removeChild(iframe);
+          setPrintJob(null);
+        }, { once: true });
+        // Fallback in case afterprint doesn't fire (e.g., user cancels)
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+            setPrintJob(null);
+          }
+        }, 30000); // 30 seconds timeout
+      }, 100);
+    };
   }, [printJob]);
 
-  // ✅ FIX 2 cont: early return comes AFTER all hooks
+  // ══════════════════════════════════════════
+
   if (!isLoggedIn) {
     return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
   }
@@ -70,10 +148,8 @@ export default function App() {
     setActiveTab('history');
   };
 
-  // ✅ FIX 3 cont: handlePrint just sets state — the useEffect above does the actual print
   const handlePrint = (order: Order, copies: PrintCopy[] = ['Customer']) => {
     setPrintJob({ order, copies });
-    // NO setTimeout + window.print() here anymore
   };
 
   const renderContent = () => {
@@ -185,65 +261,6 @@ export default function App() {
           backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
           box-shadow: 0 16px 40px rgba(0,0,0,0.18);
         }
-
-        /* ── PRINT STYLES ── */
-
-@media print {
-  @page {
-    size: 80mm auto;
-    margin: 0mm;
-  }
-
-  /* Reset everything on the page */
-  html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 80mm !important;
-    max-width: 80mm !important;
-    background: #fff !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }
-
-  /* Hide the entire app UI */
-  body * {
-    visibility: hidden !important;
-  }
-
-  /* Show only the receipt and all its children */
-  #printable-wrap,
-  #printable-wrap * {
-    visibility: visible !important;
-  }
-
-  /* Override the screen styles — make it fully static and sized */
-  #printable-wrap {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 80mm !important;
-    max-width: 80mm !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-    opacity: 1 !important;
-    overflow: visible !important;
-    z-index: 99999 !important;
-    pointer-events: auto !important;
-  }
-
-  .receipt-copy {
-    width: 80mm !important;
-    page-break-after: always;
-    break-after: page;
-  }
-  .receipt-copy:last-child {
-    page-break-after: auto;
-    break-after: auto;
-  }
-}
       `}</style>
 
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -267,41 +284,30 @@ export default function App() {
         </div>
       </main>
 
-      {/* ✅ FIX 4: No inline display:none — visibility:hidden keeps it in the DOM
-          so the print engine can see it, but it's invisible on screen */}
+      {/* Hidden container that renders the receipts — used as source for iframe */}
+      {printJob && (
+        <div
+          id="print-source"
+          style={{
+            position: 'absolute',
+            left: '-9999px',
+            top: 0,
+            width: '80mm',
+            maxWidth: '80mm',
+            background: '#fff',
+            opacity: 1,
+            pointerEvents: 'none',
+          }}
+        >
+          {printJob.copies.map(copy => (
+            <div key={`${printJob.order.id}-${copy}`} className="receipt-copy">
+              <PrintableReceipt order={printJob.order} type={copy} />
+            </div>
+          ))}
+        </div>
+      )}
 
-<div
-  id="printable-wrap"
-  aria-hidden="true"
-  style={{
-    // position:absolute keeps it out of layout but still in the paint tree —
-    // mobile Safari will actually render absolute elements when printing,
-    // unlike fixed which it frequently skips.
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '80mm',
-    maxWidth: '80mm',
-    background: '#fff',
-    // opacity:0 is more universally respected than visibility:hidden on mobile
-    // print engines — the element is fully rendered, just invisible on screen.
-    opacity: printJob ? 1 : 0,
-    // pointer-events off so it never intercepts clicks
-    pointerEvents: 'none',
-    // must not clip content — mobile Safari will cut off overflowing receipts
-    overflow: 'visible',
-    // pull it off-screen on screen, but NOT using negative z-index
-    // (negative z-index causes mobile print engines to skip the element)
-    zIndex: 0,
-  }}
->
-        {printJob && printJob.copies.map(copy => (
-          <div key={`${printJob.order.id}-${copy}`} className="receipt-copy">
-            <PrintableReceipt order={printJob.order} type={copy} />
-          </div>
-        ))}
-      </div>
-
+      {/* Feedback badge while printing */}
       {printJob && (
         <div className="fixed bottom-8 right-8 z-50 flex items-center gap-4 rounded-2xl bg-[#1b0c08]/95 p-4 text-white shadow-2xl backdrop-blur-xl print:hidden">
           <div className="rounded-xl bg-[#f4c76a] p-2 text-[#24110c]">
@@ -309,7 +315,7 @@ export default function App() {
           </div>
           <div>
             <p className="text-sm font-bold">Order {printJob.order.orderNumber}</p>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Ready to print</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Printing…</p>
           </div>
           <button onClick={() => setPrintJob(null)} className="rounded-lg p-1 transition-colors hover:bg-white/10">
             <X size={16} />

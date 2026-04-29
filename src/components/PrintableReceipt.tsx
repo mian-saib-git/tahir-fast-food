@@ -28,182 +28,140 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
     e => e.role === 'delivery_boy' && e.id === order.deliveryBoyId
   ) as DeliveryBoy | undefined;
 
-  const subtotal    = order.items.reduce((sum, item) => sum + safeNumber(item.price) * safeNumber(item.quantity), 0);
+  const subtotal = order.items.reduce((sum, item) => sum + safeNumber(item.price) * safeNumber(item.quantity), 0);
   const deliveryFee = safeNumber(order.deliveryFee);
-  const discount    = safeNumber(order.discount);
-  const total       = Math.max(0, subtotal + deliveryFee - discount);
+  const discount = safeNumber(order.discount);
+  const total = Math.max(0, subtotal + deliveryFee - discount);
 
- 
-    return (
-    <>
-    
-        <style>{`
-      @media print {
-        .receipt-page {
-          width: 80mm !important;
-          max-width: 80mm !important;
-          padding: 3mm !important;
-          font-size: 11px !important;
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-          background: #fff !important;
-        }
-        .receipt-page * {
-          color: #000 !important;
-          background-color: transparent !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        .receipt-page .bg-gray-100 {
-          background-color: #f3f4f6 !important;
-        }
-        .receipt-page img {
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-      }
-    `}</style>
-    
-<div
-  className="receipt-page"
-  style={{
-    // 80mm ≈ 302px at 96dpi — use px so ALL browsers render it correctly on screen
-    width: '302px',
-    maxWidth: '302px',
-    margin: '0 auto',
-    background: '#fff',
-    padding: '11px',
-    fontFamily: 'monospace',
-    fontSize: '11px',
-    lineHeight: 1.4,
-    color: '#000',
-    // Force colour printing on ALL mobile browsers
-    WebkitPrintColorAdjust: 'exact',
-    printColorAdjust: 'exact',
-    colorAdjust: 'exact',
-    // Prevent the receipt from being split across pages on mobile
-    pageBreakInside: 'avoid',
-    breakInside: 'avoid',
-  }}
->
-  
+  const dashedBorder = '1px dashed #000';
+  const solidBorder  = '1px solid #000';
+
+  return (
+   <div style={{ width: '100%', background: '#fff', padding: '11px', fontFamily: 'monospace', fontSize: '11px', lineHeight: '1.4', color: '#000', textAlign: 'left' }}>
       {/* HEADER */}
-      <div className="border-b border-dashed border-black pb-3 text-center">
-        <img src={logo} alt="Tahir Fast Food" className="mx-auto mb-2 h-16 w-16 object-contain" />
-        <h2 className="text-[16px] font-black uppercase tracking-wide">Tahir Fast Food</h2>
-        <p className="mt-1 text-[9px] font-bold uppercase">Fresh Fast Food &amp; Delivery</p>
+      <div style={{ borderBottom: dashedBorder, paddingBottom: '3px', textAlign: 'center' }}>
+        <img src={logo} alt="Tahir Fast Food" style={{ margin: '0 auto 8px', width: '64px', height: '64px', objectFit: 'contain' }} />
+        <h2 style={{ fontSize: '16px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Tahir Fast Food</h2>
+        <p style={{ marginTop: '1px', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase' }}>Fresh Fast Food &amp; Delivery</p>
 
         {isCustomer && (
-          <div style={{ marginTop: 8, display: 'inline-block', border: '1.5px solid #111', borderRadius: 6, padding: '5px 10px' }}>
+          <div style={{ marginTop: 8, display: 'inline-block', border: `1.5px solid #111`, borderRadius: 6, padding: '5px 10px' }}>
             <p style={{ margin: 0, fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.12em' }}>Order Now</p>
             <p style={{ margin: '3px 0 0', fontSize: 13, fontWeight: 900 }}>{RESTAURANT_ORDER_PHONE}</p>
           </div>
         )}
 
-        <div className="mt-3">
-          <p className="inline-block border border-black px-2 py-1 text-[10px] font-black uppercase">
+        <div style={{ marginTop: 12 }}>
+          <p style={{ display: 'inline-block', border: solidBorder, padding: '2px 8px', fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>
             {isCustomer ? 'Customer Receipt' : 'Kitchen Ticket'}
           </p>
         </div>
       </div>
 
       {/* ORDER META */}
-      <div className="space-y-1 border-b border-dashed border-black py-3">
-        <Row label="Order #"  value={<b>{order.orderNumber}</b>} />
-        <Row label="Date"     value={format(order.createdAt, 'dd/MM/yyyy HH:mm')} />
-        <Row label="Type"     value={<b className="uppercase">{(order.orderType || 'delivery').replace('_', ' ')}</b>} />
+      <div style={{ borderBottom: dashedBorder, padding: '12px 0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <Row label="Order #" value={<b>{order.orderNumber}</b>} />
+        <Row label="Date" value={format(order.createdAt, 'dd/MM/yyyy HH:mm')} />
+        <Row label="Type" value={<b style={{ textTransform: 'uppercase' }}>{(order.orderType || 'delivery').replace('_', ' ')}</b>} />
         <Row label="Customer" value={<b>{order.customerName}</b>} />
-        <Row label="Phone"    value={order.customerPhone} />
+        <Row label="Phone" value={order.customerPhone} />
         {order.tableNumber && <Row label="Table" value={<b>{order.tableNumber}</b>} />}
         {rider && (
           <>
-            <Row label="Rider"       value={<b>{rider.name}</b>} />
+            <Row label="Rider" value={<b>{rider.name}</b>} />
             <Row label="Rider Phone" value={rider.phone} />
-            <Row label="Vehicle"     value={rider.vehicleNumber || 'Not added'} />
+            <Row label="Vehicle" value={rider.vehicleNumber || 'Not added'} />
           </>
         )}
-{order.customerAddress && (
-  <div className="flex justify-between gap-3 pt-1">
-    <span className="font-bold shrink-0">Address</span>
-    <span className="break-words text-right">{order.customerAddress}</span>
-  </div>
-)}
+        {order.customerAddress && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', paddingTop: '4px' }}>
+            <span style={{ fontWeight: 700, flexShrink: 0 }}>Address</span>
+            <span style={{ wordBreak: 'break-word', textAlign: 'right' }}>{order.customerAddress}</span>
+          </div>
+        )}
       </div>
 
       {/* ITEMS */}
-      <div className="border-b border-dashed border-black py-3">
-        <div className="mb-2 grid grid-cols-[9mm_1fr_18mm] gap-1 border-b border-black pb-1 text-[9px] font-black uppercase">
-          <span>Qty</span><span>Item</span><span className="text-right">Total</span>
+      <div style={{ borderBottom: dashedBorder, padding: '12px 0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '9mm 1fr 18mm', gap: '2px', borderBottom: solidBorder, paddingBottom: '4px', marginBottom: 8, fontSize: 9, fontWeight: 900, textTransform: 'uppercase' }}>
+          <span>Qty</span>
+          <span>Item</span>
+          <span style={{ textAlign: 'right' }}>Total</span>
         </div>
         {order.items.map((item, index) => (
-          <div key={`${item.itemId}-${index}`} className="mb-2">
-            <div className="grid grid-cols-[9mm_1fr_18mm] gap-1">
-              <span className="font-black">{safeNumber(item.quantity)}</span>
+          <div key={`${item.itemId}-${index}`} style={{ marginBottom: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '9mm 1fr 18mm', gap: '2px' }}>
+              <span style={{ fontWeight: 900 }}>{safeNumber(item.quantity)}</span>
               <div>
-                <span className="break-words font-bold">{item.name}</span>
-                <br />
-                <span className="text-[9px] text-black/50">{rupees(safeNumber(item.price))} each</span>
+                <span style={{ fontWeight: 700, wordBreak: 'break-word' }}>{item.name}</span>
+                {safeNumber(item.quantity) > 1 && (
+                  <>
+                    <br />
+                    <span style={{ fontSize: 9, color: '#555' }}>{rupees(safeNumber(item.price))} each</span>
+                  </>
+                )}
               </div>
-              <span className="text-right font-bold">{rupees(safeNumber(item.price) * safeNumber(item.quantity))}</span>
+              <span style={{ fontWeight: 700, textAlign: 'right' }}>
+                {rupees(safeNumber(item.price) * safeNumber(item.quantity))}
+              </span>
             </div>
-            {item.note && <p className="ml-[9mm] mt-1 text-[9px] italic">Note: {item.note}</p>}
+            {item.note && <p style={{ marginLeft: '9mm', marginTop: 4, fontSize: 9, fontStyle: 'italic' }}>Note: {item.note}</p>}
           </div>
         ))}
       </div>
 
       {/* TOTALS — customer only */}
       {isCustomer && (
-        <div className="space-y-1 border-b border-dashed border-black py-3">
+        <div style={{ borderBottom: dashedBorder, padding: '12px 0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <Row label="Subtotal" value={rupees(subtotal)} />
           {deliveryFee > 0 && <Row label="Delivery" value={rupees(deliveryFee)} />}
           {discount > 0 && <Row label="Discount" value={`-${rupees(discount)}`} />}
-          <div className="mt-2 flex justify-between border-t border-black pt-2 text-[14px] font-black">
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, borderTop: solidBorder, paddingTop: 8, fontSize: 14, fontWeight: 900 }}>
             <span>TOTAL BILL</span>
             <span>{rupees(total)}</span>
           </div>
-          <div className="flex justify-between pt-1 text-[9px] uppercase">
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, fontSize: 9, textTransform: 'uppercase' }}>
             <span>Payment</span>
-            <span className="font-bold">{order.paymentMethod?.replace('_', ' ')} · {order.paymentStatus || 'unpaid'}</span>
+            <span style={{ fontWeight: 700 }}>{order.paymentMethod?.replace('_', ' ')} · {order.paymentStatus || 'unpaid'}</span>
           </div>
         </div>
       )}
 
       {/* KITCHEN NOTES */}
       {!isCustomer && (
-        <div className="border-b border-dashed border-black py-3">
-          <p className="mb-2 text-[11px] font-black uppercase">Kitchen Instructions</p>
+        <div style={{ borderBottom: dashedBorder, padding: '12px 0' }}>
+          <p style={{ marginBottom: 8, fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>Kitchen Instructions</p>
           {order.notes
-            ? <p className="break-words bg-gray-100 p-2 text-[10px] font-bold italic">{order.notes}</p>
-            : <p className="text-[10px] italic">No special notes.</p>
+            ? <p style={{ background: '#f3f4f6', padding: '8px', fontSize: 10, fontWeight: 700, fontStyle: 'italic', wordBreak: 'break-word' }}>{order.notes}</p>
+            : <p style={{ fontSize: 10, fontStyle: 'italic' }}>No special notes.</p>
           }
         </div>
       )}
 
       {/* FOOTER */}
-      <div className="pt-3 text-center">
+      <div style={{ paddingTop: 12, textAlign: 'center' }}>
         {isCustomer ? (
           <>
-            <p className="text-[10px] font-black uppercase">Thank you for choosing Tahir Fast Food</p>
-            <p className="mt-1 text-[9px]">Please keep this receipt with you.</p>
-            <div className="mt-3 border-t border-dashed border-black pt-3">
-              <p className="text-[9px] font-bold">Software Developed by: <span className="font-black">AHQAR</span></p>
-              <p className="text-[9px]">Contact: +92 318-9995518</p>
+            <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>Thank you for choosing Tahir Fast Food</p>
+            <p style={{ marginTop: 4, fontSize: 9 }}>Please keep this receipt with you.</p>
+            <div style={{ marginTop: 12, borderTop: dashedBorder, paddingTop: 12 }}>
+              <p style={{ fontSize: 9, fontWeight: 700 }}>Software Developed by: <span style={{ fontWeight: 900 }}>AHQAR</span></p>
+              <p style={{ fontSize: 9 }}>Contact: +92 318-9995518</p>
             </div>
           </>
         ) : (
-          <p className="text-[10px] font-black uppercase">— Kitchen Ticket —</p>
+          <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }}>— Kitchen Ticket —</p>
         )}
       </div>
-</div>
-    </>
+    </div>
   );
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex justify-between gap-3">
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
       <span>{label}</span>
-      <span className="max-w-[42mm] break-words text-right">{value}</span>
+      <span style={{ maxWidth: '42mm', wordBreak: 'break-word', textAlign: 'right' }}>{value}</span>
     </div>
   );
 }

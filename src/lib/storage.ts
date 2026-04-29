@@ -16,8 +16,8 @@ const STORAGE_KEYS = {
 const INITIAL_SETTINGS: CafeSettings = {
   cafeName:           'Tahir Cafe',
   tagline:            'Fresh taste, fast service',
-  phone:              '0300 0000000',
-  address:            'Pakistan',
+  phone:              '+92 3431993614',
+  address:            'in Peshawar',
   currency:           'PKR',
   defaultDeliveryFee: 150,
 };

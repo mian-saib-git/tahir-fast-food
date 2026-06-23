@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { supabase } from '../lib/supabase';
 
 const logo = '/assets/tahir-logo.png';
 const sidebarBg = '/assets/sidebar-bg.jpg';
@@ -36,16 +37,10 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
     setMobileOpen(false);
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setShowSignOut(false);
-    // Clear session/auth data — adjust key names to match your auth setup
-    try {
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user_session');
-      localStorage.removeItem('logged_in');
-      sessionStorage.clear();
-    } catch (_) {}
-    // Reload to trigger login screen / auth guard
+    await supabase.auth.signOut();
+    sessionStorage.clear();
     window.location.reload();
   };
 

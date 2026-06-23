@@ -1,16 +1,12 @@
-import { CafeSettings, DeliveryBoy, Employee, MenuItem, Order } from '../types';
+import { CafeSettings, DeliveryBoy, Employee, MenuItem, Order, OrderItem } from '../types';
 import { makeId } from './utils';
-
-// ── VERSION KEY ─────────────────────────────────────────────────────────────
-// Bump MENU_VERSION whenever you update INITIAL_MENU so localStorage
-// is automatically replaced with the new data on next load.
-const MENU_VERSION = 'v4';
+import { supabase } from './supabase';
 
 const STORAGE_KEYS = {
-  ORDERS:    'tahir_cafe_orders_v2',
-  MENU:      `tahir_cafe_menu_${MENU_VERSION}`,   // ← version-stamped
+  ORDERS: 'tahir_cafe_orders_v2',
+  MENU: 'tahir_cafe_menu_supabase',
   EMPLOYEES: 'tahir_cafe_employees_v2',
-  SETTINGS:  'tahir_cafe_settings_v2',
+  SETTINGS: 'tahir_cafe_settings_v2',
 };
 
 const INITIAL_SETTINGS: CafeSettings = {
@@ -164,14 +160,10 @@ const INITIAL_MENU: MenuItem[] = [
   { id: 'd15', name: 'Deal 15 (Sunday Special): 2 L Pizza + 1.5L Drink',                                       price: 2800, category: 'Deals', isAvailable: true },
 ];
 
-const INITIAL_EMPLOYEES: (Employee | DeliveryBoy)[] = [
-  { id: 'admin_1',   name: 'Tahir Admin',   role: 'admin',        phone: '0300 0000000', email: 'admin@tahircafe.com', shift: 'Full day', active: true },
-  { id: 'cashier_1', name: 'Front Counter', role: 'cashier',      phone: '0301 1111111', shift: 'Evening', active: true },
-  { id: 'chef_1',    name: 'Kitchen Team',  role: 'chef',         phone: '0302 2222222', shift: 'Evening', active: true },
-  { id: 'db_1',      name: 'Ali Rider',     role: 'delivery_boy', phone: '0303 3333333', vehicleNumber: 'LEA-1234', status: 'available', shift: 'Evening', active: true },
-];
+const DEFAULT_EMPLOYEE_IDS = new Set(['admin_1', 'cashier_1', 'chef_1', 'db_1']);
+let initialized = false;
 
-function read<T>(key: string, fallback: T): T {
+function readLocal<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) as T : fallback;
@@ -180,40 +172,407 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 
-function write<T>(key: string, value: T) {
+function writeLocal<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function emitChange() {
+  window.dispatchEvent(new Event('storage'));
+}
+
+function reportSyncError(scope: string, error: unknown) {
+  console.error(`Supabase sync failed for ${scope}:`, error);
+}
+
+function nullable(value?: string | null) {
+  const cleaned = value?.trim();
+  return cleaned ? cleaned : null;
+}
+
+function menuToRow(item: MenuItem) {
+  return {
+    id: item.id,
+    name: item.name,
+    price: Number(item.price) || 0,
+    category: item.category,
+    description: nullable(item.description),
+    is_available: item.isAvailable ?? true,
+    is_popular: item.isPopular ?? false,
+  };
+}
+
+function menuFromRow(row: any): MenuItem {
+  return {
+    id: row.id,
+    name: row.name,
+    price: Number(row.price) || 0,
+    category: row.category,
+    description: row.description ?? undefined,
+    isAvailable: row.is_available ?? true,
+    isPopular: row.is_popular ?? false,
+  };
+}
+
+function employeeToRow(employee: Employee | DeliveryBoy) {
+  return {
+    id: employee.id,
+    name: employee.name,
+    role: employee.role,
+    phone: employee.phone,
+    email: nullable(employee.email),
+    cnic: nullable(employee.cnic),
+    shift: nullable(employee.shift),
+    salary: Number(employee.salary) || 0,
+    active: employee.active ?? true,
+    vehicle_number: employee.role === 'delivery_boy' && 'vehicleNumber' in employee ? nullable(employee.vehicleNumber) : null,
+    status: employee.role === 'delivery_boy' && 'status' in employee ? employee.status : null,
+  };
+}
+
+function employeeFromRow(row: any): Employee | DeliveryBoy {
+  const base: Employee = {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    phone: row.phone,
+    email: row.email ?? undefined,
+    cnic: row.cnic ?? undefined,
+    shift: row.shift ?? undefined,
+    salary: Number(row.salary) || 0,
+    active: row.active ?? true,
+  };
+
+  if (row.role === 'delivery_boy') {
+    return {
+      ...base,
+      role: 'delivery_boy',
+      vehicleNumber: row.vehicle_number ?? undefined,
+      status: row.status ?? 'available',
+    };
+  }
+
+  return base;
+}
+
+function orderItemToRow(orderId: string, item: OrderItem) {
+  return {
+    order_id: orderId,
+    item_id: item.itemId,
+    name: item.name,
+    price: Number(item.price) || 0,
+    quantity: Math.max(1, Number(item.quantity) || 1),
+    note: nullable(item.note),
+  };
+}
+
+function orderItemFromRow(row: any): OrderItem {
+  return {
+    itemId: row.item_id,
+    name: row.name,
+    price: Number(row.price) || 0,
+    quantity: Number(row.quantity) || 1,
+    note: row.note ?? undefined,
+  };
+}
+
+function orderToRow(order: Order, includeOrderNumber = true) {
+  const row: Record<string, unknown> = {
+    id: order.id,
+    customer_name: nullable(order.customerName),
+    customer_phone: nullable(order.customerPhone),
+    customer_address: nullable(order.customerAddress),
+    order_type: order.orderType,
+    order_source: order.orderSource,
+    subtotal: Number(order.subtotal) || 0,
+    discount: Number(order.discount) || 0,
+    delivery_fee: Number(order.deliveryFee) || 0,
+    total: Number(order.total) || 0,
+    status: order.status,
+    payment_method: order.paymentMethod,
+    payment_status: order.paymentStatus,
+    delivery_boy_id: order.deliveryBoyId ?? null,
+    notes: nullable(order.notes),
+    table_number: nullable(order.tableNumber),
+    created_at: new Date(order.createdAt).toISOString(),
+    updated_at: new Date(order.updatedAt || order.createdAt).toISOString(),
+    cancellation_reason: nullable(order.cancellationReason),
+  };
+
+  if (includeOrderNumber && order.orderNumber) {
+    row.order_number = order.orderNumber;
+  }
+
+  return row;
+}
+
+function orderFromRow(row: any): Order {
+  return {
+    id: row.id,
+    orderNumber: row.order_number,
+    customerName: row.customer_name ?? '',
+    customerPhone: row.customer_phone ?? '',
+    customerAddress: row.customer_address ?? undefined,
+    orderType: row.order_type ?? 'delivery',
+    orderSource: row.order_source ?? 'walk_in',
+    items: (row.order_items ?? []).map(orderItemFromRow),
+    subtotal: Number(row.subtotal) || 0,
+    discount: Number(row.discount) || 0,
+    deliveryFee: Number(row.delivery_fee) || 0,
+    total: Number(row.total) || 0,
+    status: row.status,
+    paymentMethod: row.payment_method,
+    paymentStatus: row.payment_status ?? 'unpaid',
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at ?? row.created_at).getTime(),
+    deliveryBoyId: row.delivery_boy_id ?? undefined,
+    notes: row.notes ?? undefined,
+    tableNumber: row.table_number ?? undefined,
+    customerId: row.customer_id ?? undefined,
+    outForDeliveryAt: row.out_for_delivery_at ? new Date(row.out_for_delivery_at).getTime() : undefined,
+    deliveredAt: row.delivered_at ? new Date(row.delivered_at).getTime() : undefined,
+    cancelledAt: row.cancelled_at ? new Date(row.cancelled_at).getTime() : undefined,
+    cancellationReason: row.cancellation_reason ?? undefined,
+  };
+}
+
+async function fetchOrders() {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []).map(orderFromRow);
+}
+
+async function persistOrder(order: Order, syncItems = false) {
+  const { error } = await supabase
+    .from('orders')
+    .upsert(orderToRow(order), { onConflict: 'id' });
+  if (error) throw error;
+
+  if (syncItems) {
+    const { error: deleteError } = await supabase
+      .from('order_items')
+      .delete()
+      .eq('order_id', order.id);
+    if (deleteError) throw deleteError;
+
+    if (order.items.length > 0) {
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(order.items.map((item) => orderItemToRow(order.id, item)));
+      if (itemsError) throw itemsError;
+    }
+  }
+}
+
+async function syncMenu(menu: MenuItem[]) {
+  if (menu.length > 0) {
+    const { error } = await supabase
+      .from('menu_items')
+      .upsert(menu.map(menuToRow), { onConflict: 'id' });
+    if (error) throw error;
+  }
+
+  const { data: remote, error: selectError } = await supabase
+    .from('menu_items')
+    .select('id');
+  if (selectError) throw selectError;
+
+  const keep = new Set(menu.map((item) => item.id));
+  const remove = (remote ?? []).map((row) => row.id).filter((id) => !keep.has(id));
+  if (remove.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('menu_items')
+      .delete()
+      .in('id', remove);
+    if (deleteError) throw deleteError;
+  }
+}
+
+async function syncEmployees(employees: (Employee | DeliveryBoy)[]) {
+  if (employees.length > 0) {
+    const { error } = await supabase
+      .from('employees')
+      .upsert(employees.map(employeeToRow), { onConflict: 'id' });
+    if (error) throw error;
+  }
+
+  const { data: remote, error: selectError } = await supabase
+    .from('employees')
+    .select('id');
+  if (selectError) throw selectError;
+
+  const keep = new Set(employees.map((employee) => employee.id));
+  const remove = (remote ?? []).map((row) => row.id).filter((id) => !keep.has(id));
+  if (remove.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('employees')
+      .delete()
+      .in('id', remove);
+    if (deleteError) throw deleteError;
+  }
+}
+
+async function syncOrders(orders: Order[]) {
+  for (const order of orders) {
+    await persistOrder(order, true);
+  }
+
+  const { data: remote, error: selectError } = await supabase
+    .from('orders')
+    .select('id');
+  if (selectError) throw selectError;
+
+  const keep = new Set(orders.map((order) => order.id));
+  const remove = (remote ?? []).map((row) => row.id).filter((id) => !keep.has(id));
+  if (remove.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('orders')
+      .delete()
+      .in('id', remove);
+    if (deleteError) throw deleteError;
+  }
+}
+
 export const storage = {
-  getSettings:  () => read<CafeSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS),
-  saveSettings: (settings: CafeSettings) => write(STORAGE_KEYS.SETTINGS, settings),
+  initialize: async () => {
+    if (initialized) return;
 
-  // Menu: reads from version-stamped key so new INITIAL_MENU always loads fresh
-  getMenu:   () => read<MenuItem[]>(STORAGE_KEYS.MENU, INITIAL_MENU),
-  saveMenu:  (menu: MenuItem[]) => write(STORAGE_KEYS.MENU, menu),
-  resetMenu: () => write(STORAGE_KEYS.MENU, INITIAL_MENU),
+    const cachedMenu = readLocal<MenuItem[]>(STORAGE_KEYS.MENU, INITIAL_MENU);
+    const cachedEmployees = readLocal<(Employee | DeliveryBoy)[]>(STORAGE_KEYS.EMPLOYEES, []);
+    const cachedOrders = readLocal<Order[]>(STORAGE_KEYS.ORDERS, []);
 
-  getEmployees:  () => read<(Employee | DeliveryBoy)[]>(STORAGE_KEYS.EMPLOYEES, INITIAL_EMPLOYEES),
-  saveEmployees: (employees: (Employee | DeliveryBoy)[]) => write(STORAGE_KEYS.EMPLOYEES, employees),
+    const [menuResult, employeesResult, ordersResult] = await Promise.all([
+      supabase.from('menu_items').select('*').order('category').order('name'),
+      supabase.from('employees').select('*').order('name'),
+      supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }),
+    ]);
 
-  getOrders:  () => read<Order[]>(STORAGE_KEYS.ORDERS, []),
-  saveOrders: (orders: Order[]) => write(STORAGE_KEYS.ORDERS, orders),
-  addOrder:   (order: Order) => {
-    const orders = read<Order[]>(STORAGE_KEYS.ORDERS, []);
-    write(STORAGE_KEYS.ORDERS, [order, ...orders]);
+    if (menuResult.error) throw menuResult.error;
+    if (employeesResult.error) throw employeesResult.error;
+    if (ordersResult.error) throw ordersResult.error;
+
+    let menu = (menuResult.data ?? []).map(menuFromRow);
+    if (menu.length === 0) {
+      menu = cachedMenu.length > 0 ? cachedMenu : INITIAL_MENU;
+      await syncMenu(menu);
+    }
+
+    let employees = (employeesResult.data ?? []).map(employeeFromRow);
+    if (employees.length === 0) {
+      const customEmployees = cachedEmployees.filter((employee) => !DEFAULT_EMPLOYEE_IDS.has(employee.id));
+      if (customEmployees.length > 0) {
+        await syncEmployees(customEmployees);
+        employees = customEmployees;
+      }
+    }
+
+    let orders = (ordersResult.data ?? []).map(orderFromRow);
+    if (orders.length === 0 && cachedOrders.length > 0) {
+      await syncOrders(cachedOrders);
+      orders = await fetchOrders();
+    }
+
+    writeLocal(STORAGE_KEYS.MENU, menu);
+    writeLocal(STORAGE_KEYS.EMPLOYEES, employees);
+    writeLocal(STORAGE_KEYS.ORDERS, orders);
+    initialized = true;
+    emitChange();
+  },
+
+  getSettings: () => readLocal<CafeSettings>(STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS),
+  saveSettings: (settings: CafeSettings) => writeLocal(STORAGE_KEYS.SETTINGS, settings),
+
+  getMenu: () => readLocal<MenuItem[]>(STORAGE_KEYS.MENU, INITIAL_MENU),
+  saveMenu: (menu: MenuItem[]) => {
+    writeLocal(STORAGE_KEYS.MENU, menu);
+    emitChange();
+    void syncMenu(menu).catch((error) => reportSyncError('menu', error));
+  },
+  resetMenu: () => {
+    writeLocal(STORAGE_KEYS.MENU, INITIAL_MENU);
+    emitChange();
+    void syncMenu(INITIAL_MENU).catch((error) => reportSyncError('menu reset', error));
+  },
+
+  getEmployees: () => readLocal<(Employee | DeliveryBoy)[]>(STORAGE_KEYS.EMPLOYEES, []),
+  saveEmployees: (employees: (Employee | DeliveryBoy)[]) => {
+    writeLocal(STORAGE_KEYS.EMPLOYEES, employees);
+    emitChange();
+    void syncEmployees(employees).catch((error) => reportSyncError('employees', error));
+  },
+
+  getOrders: () => readLocal<Order[]>(STORAGE_KEYS.ORDERS, []),
+  saveOrders: (orders: Order[]) => {
+    writeLocal(STORAGE_KEYS.ORDERS, orders);
+    emitChange();
+    void syncOrders(orders).catch((error) => reportSyncError('orders', error));
+  },
+  addOrder: async (order: Order) => {
+    const { data, error } = await supabase
+      .from('orders')
+      .insert(orderToRow(order, false))
+      .select('*')
+      .single();
+    if (error) throw error;
+
+    if (order.items.length > 0) {
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(order.items.map((item) => orderItemToRow(order.id, item)));
+      if (itemsError) {
+        await supabase.from('orders').delete().eq('id', order.id);
+        throw itemsError;
+      }
+    }
+
+    const saved = orderFromRow({ ...data, order_items: order.items.map((item) => ({
+      item_id: item.itemId,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      note: item.note,
+    })) });
+
+    const orders = [saved, ...storage.getOrders().filter((item) => item.id !== saved.id)];
+    writeLocal(STORAGE_KEYS.ORDERS, orders);
+    emitChange();
+    return saved;
   },
   updateOrder: (id: string, patch: Partial<Order>) => {
-    const orders = read<Order[]>(STORAGE_KEYS.ORDERS, []);
-    const updated = orders.map(order => order.id === id ? { ...order, ...patch, updatedAt: Date.now() } : order);
-    write(STORAGE_KEYS.ORDERS, updated);
+    const orders = storage.getOrders();
+    const updated = orders.map((order) =>
+      order.id === id
+        ? { ...order, ...patch, updatedAt: Date.now() }
+        : order
+    );
+    writeLocal(STORAGE_KEYS.ORDERS, updated);
+    emitChange();
+
+    const changed = updated.find((order) => order.id === id);
+    if (changed) {
+      void persistOrder(changed, patch.items !== undefined)
+        .catch((error) => reportSyncError('order update', error));
+    }
+
     return updated;
   },
   deleteOrder: (id: string) => {
-    const orders = read<Order[]>(STORAGE_KEYS.ORDERS, []);
-    const updated = orders.filter(order => order.id !== id);
-    write(STORAGE_KEYS.ORDERS, updated);
+    const updated = storage.getOrders().filter((order) => order.id !== id);
+    writeLocal(STORAGE_KEYS.ORDERS, updated);
+    emitChange();
+    void supabase
+      .from('orders')
+      .delete()
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) reportSyncError('order delete', error);
+      });
     return updated;
   },
+
   newEmployeeId: () => makeId('emp'),
-  newMenuId:     () => makeId('menu'),
+  newMenuId: () => makeId('menu'),
 };

@@ -7,14 +7,14 @@ import {
   BadgePercent, Bike, Send, Search, X as XIcon,
 } from 'lucide-react';
 import { storage } from '../lib/storage';
-import { makeId, makeOrderNumber, money } from '../lib/utils';
+import { makeId, money } from '../lib/utils';
 import {
   DeliveryBoy, MenuItem, Order, OrderItem,
   OrderSource, OrderType, PaymentMethod,
 } from '../types';
 
 interface OrderFormProps {
-  onOrderCreated: (order: Order) => void;
+  onOrderCreated: (order: Order) => Promise<void>;
 }
 
 const logo = '/assets/tahir-logo.png';
@@ -146,10 +146,9 @@ export default function OrderForm({ onOrderCreated }: OrderFormProps) {
 
   const buildOrder = (): Order | null => {
     if (bill.length === 0)                                     { alert('Add at least one item.'); return null; }
-    if (!customer.name.trim() || !customer.phone.trim())       { alert('Enter customer name and phone.'); return null; }
     if (orderType === 'delivery' && !customer.address.trim())  { alert('Enter delivery address.'); return null; }
     return {
-      id: makeId('order'), orderNumber: makeOrderNumber(),
+      id: makeId('order'), orderNumber: '',
       customerName: customer.name.trim(), customerPhone: customer.phone.trim(),
       customerAddress: customer.address.trim(), orderType, orderSource,
       items: bill.map(i => ({ ...i, price: safeNumber(i.price), quantity: safeNumber(i.quantity) })),
@@ -170,18 +169,23 @@ export default function OrderForm({ onOrderCreated }: OrderFormProps) {
     setCategory('All'); setSearchQuery('');
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (savingOrder) return;
     const order = buildOrder();
     if (!order) return;
+
     setSavingOrder(true);
-    setTimeout(() => {
-      onOrderCreated(order);
+    try {
+      await onOrderCreated(order);
       resetForm();
-      setSavingOrder(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2200);
-    }, 380);
+    } catch (error) {
+      console.error(error);
+      alert('The order could not be saved to Supabase. Please try again.');
+    } finally {
+      setSavingOrder(false);
+    }
   };
 
   const getBillQty = (itemId: string) => bill.find(b => b.itemId === itemId)?.quantity ?? 0;

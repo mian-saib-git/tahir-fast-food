@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+.env.local
+.supabase-data-backup-*/
+connect-supabase-data.mjs
+tahir-cafe-source.zip
+src/components/LoginPage.before-supabase.tsx

@@ -69,6 +69,11 @@ export interface Order {
   deliveryBoyId?: string;
   notes?: string;
   tableNumber?: string;
+  customerId?: string;
+  outForDeliveryAt?: number;
+  deliveredAt?: number;
+  cancelledAt?: number;
+  cancellationReason?: string;
 }
 
 export interface CafeSettings {

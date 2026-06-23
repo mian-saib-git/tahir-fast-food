@@ -11,6 +11,7 @@ import StaffManager from './components/StaffManager';
 import PrintableReceipt from './components/PrintableReceipt';
 import { Order } from './types';
 import { storage } from './lib/storage';
+import { supabase } from './lib/supabase';
 import { Printer, X } from 'lucide-react';
 
 const dashboardPageBg = '/assets/dashboard-bg.jpg';
@@ -19,9 +20,9 @@ const sectionsPageBg  = '/assets/tahir-food-background.jpg';
 type PrintCopy = 'Customer' | 'Kitchen';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(
-    () => sessionStorage.getItem('tahir_logged_in') === 'true'
-  );
+  const [authReady, setAuthReady] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
   const [activeTab,    setActiveTab]    = useState('dashboard');
   const [orders,       setOrders]       = useState<Order[]>([]);
   const [printJob,     setPrintJob]     = useState<{ order: Order; copies: PrintCopy[] } | null>(null);
@@ -30,18 +31,58 @@ export default function App() {
   const printFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
-    setOrders(storage.getOrders());
+    let active = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setIsLoggedIn(Boolean(data.session));
+      setAuthReady(true);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      setIsLoggedIn(Boolean(session));
+      setAuthReady(true);
+    });
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    const syncOrders  = () => setOrders(storage.getOrders());
-    window.addEventListener('focus',      syncOrders);
-    window.addEventListener('storage',    syncOrders);
-    return () => {
-      window.removeEventListener('focus',      syncOrders);
-      window.removeEventListener('storage',    syncOrders);
+    if (!isLoggedIn) {
+      setDataReady(false);
+      setOrders([]);
+      return;
+    }
+
+    let active = true;
+    const syncOrders = () => setOrders(storage.getOrders());
+
+    const loadData = async () => {
+      try {
+        await storage.initialize();
+        if (!active) return;
+        setOrders(storage.getOrders());
+        setDataReady(true);
+      } catch (error) {
+        console.error(error);
+        alert('Unable to load cafe data from Supabase. Check your internet connection and try again.');
+      }
     };
-  }, []);
+
+    void loadData();
+    window.addEventListener('focus', syncOrders);
+    window.addEventListener('storage', syncOrders);
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', syncOrders);
+      window.removeEventListener('storage', syncOrders);
+    };
+  }, [isLoggedIn]);
 
   // ══════════════════════════════════════════
   //  PRINTING — reliable iframe method
@@ -135,15 +176,25 @@ export default function App() {
 
   // ══════════════════════════════════════════
 
+  if (!authReady || (isLoggedIn && !dataReady)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#160805] text-white">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-[#f4c76a]" />
+          <p className="text-sm font-bold">Loading Tahir Cafe data...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
     return <LoginPage onLogin={() => setIsLoggedIn(true)} />;
   }
 
-  const handleOrderCreated = (newOrder: Order) => {
-    const updatedOrders = [newOrder, ...storage.getOrders().filter(o => o.id !== newOrder.id)];
-    setOrders(updatedOrders);
-    storage.saveOrders(updatedOrders);
-    setRecentOrderId(newOrder.id);
+  const handleOrderCreated = async (newOrder: Order) => {
+    const savedOrder = await storage.addOrder(newOrder);
+    setOrders(storage.getOrders());
+    setRecentOrderId(savedOrder.id);
     setTimeout(() => setRecentOrderId(null), 3500);
     setActiveTab('history');
   };

@@ -320,6 +320,28 @@ function RidersSection({ riders, orders, setRiderStatus, startEdit, remove }: {
   const getActiveOrder = (id: string) =>
     orders.find(o => o.deliveryBoyId === id && o.status === 'out_for_delivery');
 
+  const getRideStats = (id: string) => {
+    const now = new Date();
+    const isToday = (timestamp?: number) => {
+      if (!timestamp) return false;
+      const date = new Date(timestamp);
+      return (
+        date.getFullYear() === now.getFullYear() &&
+        date.getMonth() === now.getMonth() &&
+        date.getDate() === now.getDate()
+      );
+    };
+
+    const delivered = orders.filter(
+      order => order.deliveryBoyId === id && order.status === 'delivered'
+    );
+
+    return {
+      today: delivered.filter(order => isToday(order.deliveredAt || order.updatedAt)).length,
+      total: delivered.length,
+    };
+  };
+
   const statusConfig = {
     available:   { label:'Available',   dot:'#34d399', headerBg:'linear-gradient(135deg,#064e2e,#0d7a4a)', text:'#34d399',  border:'rgba(52,211,153,0.3)' },
     on_delivery: { label:'On Delivery', dot:'#60a5fa', headerBg:'linear-gradient(135deg,#0d2244,#1a4080)', text:'#60a5fa',  border:'rgba(96,165,250,0.3)' },
@@ -375,6 +397,7 @@ function RidersSection({ riders, orders, setRiderStatus, startEdit, remove }: {
             const status = rider.status || 'available';
             const cfg = statusConfig[status];
             const liveOrder = getActiveOrder(rider.id);
+            const rideStats = getRideStats(rider.id);
             return (
               <div key={rider.id} className="staff-card float-in" style={{
                 animationDelay: `${i * 0.06}s`,
@@ -402,12 +425,19 @@ function RidersSection({ riders, orders, setRiderStatus, startEdit, remove }: {
 
                 {/* Body */}
                 <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:12 }}>
-                  {/* Vehicle info card */}
-                  <div style={{ background:'#f8f9fa', borderRadius:14, padding:'10px 14px', display:'flex', alignItems:'center', gap:10 }}>
-                    <span style={{ fontSize:18 }}>🚗</span>
-                    <div>
-                      <p style={{ margin:0, fontSize:9, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.12em', color:'#9ca3af' }}>Vehicle Number</p>
-                      <p style={{ margin:'2px 0 0', fontSize:13, fontWeight:900, color:'#24110c' }}>{rider.vehicleNumber || 'Not set'}</p>
+                  {/* Vehicle and ride-count cards */}
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,minmax(0,1fr))', gap:8 }}>
+                    <div style={{ background:'#f8f9fa', borderRadius:14, padding:'10px 12px', minWidth:0 }}>
+                      <p style={{ margin:0, fontSize:9, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.1em', color:'#9ca3af' }}>Vehicle</p>
+                      <p style={{ margin:'4px 0 0', fontSize:12, fontWeight:900, color:'#24110c', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{rider.vehicleNumber || 'Not set'}</p>
+                    </div>
+                    <div style={{ background:'linear-gradient(135deg,#ecfdf5,#d1fae5)', borderRadius:14, padding:'10px 12px', border:'1px solid rgba(16,185,129,0.18)' }}>
+                      <p style={{ margin:0, fontSize:9, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.1em', color:'#059669' }}>Rides Today</p>
+                      <p style={{ margin:'4px 0 0', fontSize:20, lineHeight:1, fontWeight:900, color:'#047857', fontFamily:'monospace' }}>{rideStats.today}</p>
+                    </div>
+                    <div style={{ background:'linear-gradient(135deg,#f5f3ff,#ede9fe)', borderRadius:14, padding:'10px 12px', border:'1px solid rgba(124,58,237,0.15)' }}>
+                      <p style={{ margin:0, fontSize:9, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.1em', color:'#7c3aed' }}>Total Rides</p>
+                      <p style={{ margin:'4px 0 0', fontSize:20, lineHeight:1, fontWeight:900, color:'#6d28d9', fontFamily:'monospace' }}>{rideStats.total}</p>
                     </div>
                   </div>
 
@@ -415,8 +445,8 @@ function RidersSection({ riders, orders, setRiderStatus, startEdit, remove }: {
                   {liveOrder ? (
                     <div style={{ background:'linear-gradient(135deg,#eff6ff,#dbeafe)', borderRadius:16, padding:'12px 14px', border:'1px solid rgba(96,165,250,0.3)' }}>
                       <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.14em', color:'#3b82f6' }}>🔵 Live Delivery</p>
-                      <p style={{ margin:0, fontSize:13, fontWeight:900, color:'#1e3a5f' }}>{liveOrder.orderNumber} — {liveOrder.customerName}</p>
-                      <p style={{ margin:'2px 0 0', fontSize:11, color:'#4b7ab8', fontWeight:600 }}>{liveOrder.customerPhone}</p>
+                      <p style={{ margin:0, fontSize:13, fontWeight:900, color:'#1e3a5f' }}>{liveOrder.orderNumber} — {liveOrder.customerName || 'Walk-in customer'}</p>
+                      {liveOrder.customerPhone && <p style={{ margin:'2px 0 0', fontSize:11, color:'#4b7ab8', fontWeight:600 }}>{liveOrder.customerPhone}</p>}
                       {liveOrder.customerAddress && (
                         <div style={{ display:'flex', gap:5, marginTop:6, alignItems:'flex-start' }}>
                           <MapPin size={11} color="#60a5fa" style={{ marginTop:1, flexShrink:0 }} />

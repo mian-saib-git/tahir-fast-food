@@ -159,7 +159,7 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   return (
     <>
       {/* Mobile top bar */}
-      <div className="sticky top-0 z-50 flex items-center justify-between border-b border-white/10 bg-[#1c0905]/92 px-4 py-3 backdrop-blur-xl lg:hidden">
+      <div className="sticky top-0 z-50 flex items-center justify-between border-b border-white/10 bg-[#1c0905]/92 px-4 py-3 backdrop-blur-xl xl:hidden">
         <div className="flex items-center gap-3">
           <img src={logo} alt="Tahir" className="h-10 w-10 object-contain" />
           <div>
@@ -173,17 +173,17 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
       </div>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setMobileOpen(false)} />
+        <div className="fixed inset-0 z-40 bg-black/60 xl:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      <aside className={cn('fixed inset-y-0 left-0 z-50 w-72 overflow-hidden transition-transform duration-300 lg:hidden', mobileOpen ? 'translate-x-0' : '-translate-x-full')}>
+      <aside className={cn('fixed inset-y-0 left-0 z-50 w-72 overflow-hidden transition-transform duration-300 xl:hidden', mobileOpen ? 'translate-x-0' : '-translate-x-full')}>
         <button onClick={() => setMobileOpen(false)} className="absolute right-4 top-4 z-20 rounded-xl bg-white/10 p-2 text-white">
           <X size={18} />
         </button>
         <SidebarContent />
       </aside>
 
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 overflow-hidden lg:block">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 overflow-hidden xl:block">
         <SidebarContent />
       </aside>
     </>

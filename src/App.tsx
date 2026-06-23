@@ -316,10 +316,10 @@ export default function App() {
 
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <main className="min-h-screen p-6 pt-20 lg:ml-72 lg:p-8 lg:pt-8">
+      <main className="min-h-screen p-3 pt-4 sm:p-5 sm:pt-5 xl:ml-72 xl:p-8 xl:pt-8">
         {activeTab !== 'dashboard' && activeTab !== 'orders' && (
-          <header className="mb-8">
-            <h1 className="font-display text-5xl font-bold italic tracking-tight text-white">
+          <header className="mb-5 sm:mb-8">
+            <h1 className="font-display text-3xl font-bold italic tracking-tight text-white sm:text-4xl xl:text-5xl">
               {activeTab === 'history' && 'Order Desk'}
               {activeTab === 'menu'    && 'Menu Items'}
               {activeTab === 'staff'   && 'Team & Riders'}

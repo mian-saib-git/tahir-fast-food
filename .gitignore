@@ -11,3 +11,11 @@ coverage/
 connect-supabase-data.mjs
 tahir-cafe-source.zip
 src/components/LoginPage.before-supabase.tsx
+.receipt-update-backup-*/
+.receipt-tweak-backup-*/
+.final-receipt-login-backup-*/
+apply-receipt-update.mjs
+apply-receipt-tweak.mjs
+apply-final-receipt-login.mjs
+.next-updates-backup-*/
+apply-next-updates.mjs

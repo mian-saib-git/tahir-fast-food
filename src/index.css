@@ -411,3 +411,54 @@
 .animate-bill-pop {
   animation: billPop 0.28s ease both;
 }
+
+
+/* Tablet and compact-laptop layout improvements */
+@media (max-width: 1279px) {
+  .app-shell {
+    background-attachment: scroll !important;
+  }
+
+  .premium-card,
+  .glass-panel,
+  .hero-panel {
+    border-radius: 1.35rem;
+  }
+
+  .premium-card:hover {
+    transform: none;
+  }
+
+  main {
+    width: 100%;
+    overflow-x: hidden;
+  }
+}
+
+@media (max-width: 767px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .premium-card,
+  .glass-panel,
+  .hero-panel {
+    border-radius: 1.1rem;
+  }
+
+  .input-like,
+  .dark-input,
+  .input-premium {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  button,
+  select {
+    min-height: 42px;
+  }
+
+  .order-scroll {
+    max-height: none !important;
+  }
+}

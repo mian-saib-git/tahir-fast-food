@@ -1,16 +1,21 @@
-﻿import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import React, { useState } from 'react';
+import { Eye, EyeOff, Lock, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const logo = '/assets/tahir-logo.png';
 const bg = '/assets/tahir-food-background.jpg';
+const AUTH_DOMAIN = 'tahirfastfood.app';
 
 interface LoginPageProps {
   onLogin: () => void;
 }
 
+function usernameToEmail(username: string) {
+  return `${username.trim().toLowerCase()}@${AUTH_DOMAIN}`;
+}
+
 export default function LoginPage({ onLogin }: LoginPageProps) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -21,22 +26,28 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     event.preventDefault();
     setError('');
 
-    if (!email.trim() || !password) {
-      setError('Please enter your email and password.');
+    const cleanUsername = username.trim();
+
+    if (!cleanUsername || !password) {
+      setError('Please enter your username and password.');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(cleanUsername)) {
+      setError('Username can only contain letters, numbers, and underscores.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const { error: signInError } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: usernameToEmail(cleanUsername),
+        password,
+      });
 
       if (signInError) {
-        setError('Email or password is incorrect.');
+        setError('Username or password is incorrect.');
         setShaking(true);
         setTimeout(() => setShaking(false), 500);
         return;
@@ -107,7 +118,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           <form onSubmit={submit} className="space-y-4">
             <div>
               <label className="mb-2 block text-xs font-black uppercase tracking-[0.14em] text-[#f4c76a]">
-                Email address
+                Username
               </label>
 
               <div
@@ -115,17 +126,19 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   error ? 'border-red-400' : 'border-white/10'
                 }`}
               >
-                <Mail size={17} className="shrink-0 text-[#0284c7]" />
+                <User size={17} className="shrink-0 text-[#0284c7]" />
 
                 <input
-                  type="email"
-                  value={email}
+                  type="text"
+                  value={username}
                   onChange={(event) => {
-                    setEmail(event.target.value);
+                    setUsername(event.target.value);
                     setError('');
                   }}
-                  placeholder="Enter your email"
-                  autoComplete="email"
+                  placeholder="Enter your username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   className="w-full bg-transparent text-sm font-semibold outline-none placeholder:text-black/35"
                 />
               </div>
@@ -161,15 +174,9 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
                   className="shrink-0 text-black/45 transition hover:text-black"
-                  aria-label={
-                    showPassword ? 'Hide password' : 'Show password'
-                  }
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? (
-                    <EyeOff size={18} />
-                  ) : (
-                    <Eye size={18} />
-                  )}
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>

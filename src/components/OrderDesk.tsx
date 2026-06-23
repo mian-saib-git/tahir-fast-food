@@ -1,7 +1,7 @@
 import html2canvas from 'html2canvas';
 import React, { useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { Download, ImageUp, Search, Trash2, Filter, TrendingUp, Edit3, X, PlusCircle } from 'lucide-react';
+import { Download, ImageUp, Search, Trash2, Filter, TrendingUp, Edit3, X, PlusCircle, Eye, History, RotateCcw, Ban } from 'lucide-react';
 import { cn, money, statusLabel, whatsappPhone } from '../lib/utils';
 import { storage } from '../lib/storage';
 import { DeliveryBoy, Order, OrderStatus, MenuItem } from '../types';
@@ -338,14 +338,33 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
   const [sendingOrderId, setSendingOrderId] = useState<string | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [viewMode, setViewMode] = useState<'active' | 'delivered' | 'cancelled' | 'all'>('active');
 
   const riders = storage.getEmployees().filter((e): e is DeliveryBoy => e.role === 'delivery_boy');
 
   const filtered = useMemo(() => orders.filter(order => {
+    const matchesView =
+      viewMode === 'all' ||
+      (viewMode === 'active' && !['delivered', 'cancelled'].includes(order.status)) ||
+      (viewMode === 'delivered' && order.status === 'delivered') ||
+      (viewMode === 'cancelled' && order.status === 'cancelled');
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    const text = `${order.orderNumber} ${order.customerName} ${order.customerPhone} ${order.items.map(i => i.name).join(' ')}`.toLowerCase();
-    return matchesStatus && text.includes(query.toLowerCase());
-  }), [orders, query, statusFilter]);
+    const text = `${order.orderNumber} ${order.customerName || ''} ${order.customerPhone || ''} ${order.customerAddress || ''} ${order.items.map(i => i.name).join(' ')}`.toLowerCase();
+    return matchesView && matchesStatus && text.includes(query.trim().toLowerCase());
+  }), [orders, query, statusFilter, viewMode]);
+
+  const customerHistoryFor = (order: Order) => {
+    const phone = (order.customerPhone || '').replace(/\D/g, '');
+    const name = (order.customerName || '').trim().toLowerCase();
+    return orders
+      .filter(candidate => {
+        if (phone) return (candidate.customerPhone || '').replace(/\D/g, '') === phone;
+        if (name) return (candidate.customerName || '').trim().toLowerCase() === name;
+        return candidate.id === order.id;
+      })
+      .sort((a, b) => b.createdAt - a.createdAt);
+  };
 
   const updateRiderStatus = (riderId: string, status: DeliveryBoy['status']) => {
     const employees = storage.getEmployees();
@@ -355,11 +374,36 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
   const updateOrder = (id: string, patch: Partial<Order>) => {
     const current = orders.find(o => o.id === id);
     if (!current) return;
+
+    let finalPatch: Partial<Order> = { ...patch, updatedAt: Date.now() };
+
+    if (patch.status === 'cancelled' && current.status !== 'cancelled') {
+      const reason = window.prompt('Why was this order cancelled?');
+      if (reason === null) return;
+      if (!reason.trim()) {
+        alert('Please enter a cancellation reason.');
+        return;
+      }
+      finalPatch = {
+        ...finalPatch,
+        cancellationReason: reason.trim(),
+        cancelledAt: Date.now(),
+      };
+    }
+
+    if (current.status === 'cancelled' && patch.status && patch.status !== 'cancelled') {
+      finalPatch = {
+        ...finalPatch,
+        cancellationReason: undefined,
+        cancelledAt: undefined,
+      };
+    }
+
     if (current.deliveryBoyId && patch.status) {
       if (patch.status === 'out_for_delivery') updateRiderStatus(current.deliveryBoyId, 'on_delivery');
       if (['ready','delivered','cancelled','preparing','pending'].includes(patch.status)) updateRiderStatus(current.deliveryBoyId, 'available');
     }
-    setOrders(storage.updateOrder(id, { ...patch, updatedAt: Date.now() }));
+    setOrders(storage.updateOrder(id, finalPatch));
   };
 
   const assignRider = (order: Order, riderId: string) => {
@@ -438,6 +482,9 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
     total: orders.length,
     preparing: orders.filter(o => o.status === 'preparing').length,
     delivering: orders.filter(o => o.status === 'out_for_delivery').length,
+    delivered: orders.filter(o => o.status === 'delivered').length,
+    cancelled: orders.filter(o => o.status === 'cancelled').length,
+    active: orders.filter(o => !['delivered', 'cancelled'].includes(o.status)).length,
   }), [orders]);
 
   return (
@@ -532,6 +579,35 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
           </div>
         </div>
 
+        {/* ORDER SECTIONS */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            ['active', 'Active Orders', stats.active, '#0891b2'],
+            ['delivered', 'Delivered', stats.delivered, '#059669'],
+            ['cancelled', 'Cancelled', stats.cancelled, '#dc2626'],
+            ['all', 'All Orders', stats.total, '#7b3a18'],
+          ].map(([mode, label, count, color]) => {
+            const active = viewMode === mode;
+            return (
+              <button
+                key={String(mode)}
+                onClick={() => setViewMode(mode as typeof viewMode)}
+                style={{
+                  borderRadius: 18,
+                  border: active ? `2px solid ${color}` : '1.5px solid rgba(255,255,255,0.18)',
+                  background: active ? '#fff' : 'rgba(255,255,255,0.82)',
+                  padding: '14px 16px',
+                  textAlign: 'left',
+                  boxShadow: active ? `0 12px 30px ${color}22` : '0 8px 22px rgba(0,0,0,0.08)',
+                }}
+              >
+                <span style={{ display: 'block', fontSize: 22, fontWeight: 900, color: String(color) }}>{Number(count)}</span>
+                <span style={{ display: 'block', marginTop: 4, fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#4b2a19' }}>{String(label)}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* ORDER CARDS */}
         <div className="grid grid-cols-1 gap-5">
           {filtered.map(order => {
@@ -550,9 +626,18 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
                       <h3 className="text-lg font-black text-[#24110c]">{order.orderNumber}</h3>
                       <span className={cn('rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest', statusTone(order.status))}>{statusLabel(order.status)}</span>
                     </div>
-                    <p className="mt-2 text-sm font-bold">{order.customerName} · {order.customerPhone}</p>
+                    <p className="mt-2 text-sm font-bold">
+                      {order.customerName || 'Walk-in customer'}
+                      {order.customerPhone ? ` · ${order.customerPhone}` : ''}
+                    </p>
                     <p className="mt-1 text-xs text-black/40">{format(order.createdAt,'dd MMM yyyy, hh:mm a')} · {order.orderType.replace('_',' ')} · {order.orderSource}</p>
                     {order.customerAddress && <p className="mt-2 text-xs text-black/50">{order.customerAddress}</p>}
+                    {order.status === 'cancelled' && order.cancellationReason && (
+                      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                        Cancelled: {order.cancellationReason}
+                        {order.cancelledAt ? ` · ${format(order.cancelledAt, 'dd MMM, hh:mm a')}` : ''}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-3">
                     <div className="rounded-2xl border border-black/5 bg-[#fffaf4] p-3">
@@ -583,6 +668,20 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
+                        onClick={() => setSelectedOrder(order)}
+                        className="rounded-xl bg-white px-4 py-2 text-xs font-black uppercase tracking-wider text-[#7b3a18] shadow-md ring-1 ring-[#ead8bd] transition hover:-translate-y-0.5"
+                      >
+                        <Eye size={14} className="mr-1 inline" /> Details & History
+                      </button>
+                      {order.status === 'cancelled' && (
+                        <button
+                          onClick={() => updateOrder(order.id, { status: 'pending' })}
+                          className="rounded-xl bg-emerald-100 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-700"
+                        >
+                          <RotateCcw size={14} className="mr-1 inline" /> Restore
+                        </button>
+                      )}
+                      <button
                         onClick={() => setEditingOrder(order)}
                         className="rounded-xl bg-[#f4c76a] px-4 py-2 text-xs font-black uppercase tracking-wider text-[#1c0905] shadow-md transition hover:-translate-y-0.5"
                       >
@@ -606,6 +705,101 @@ export default function OrderDesk({ orders, setOrders, onPrint, highlightOrderId
           )}
         </div>
       </div>
+
+      {selectedOrder && (() => {
+        const history = customerHistoryFor(selectedOrder);
+        const completed = history.filter(item => item.status === 'delivered');
+        const spent = completed.reduce((sum, item) => sum + getFinancials(item).total, 0);
+        const rider = riders.find(item => item.id === selectedOrder.deliveryBoyId);
+        return (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6" onClick={() => setSelectedOrder(null)}>
+            <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[1.5rem] bg-[#fffaf4] shadow-2xl sm:rounded-[2rem]" onClick={event => event.stopPropagation()}>
+              <div className="sticky top-0 z-10 flex items-center justify-between bg-gradient-to-r from-[#1c0905] to-[#7b3a18] px-5 py-4 text-white sm:px-7">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f4c76a]">Order record</p>
+                  <h3 className="mt-1 text-xl font-black sm:text-2xl">{selectedOrder.orderNumber}</h3>
+                </div>
+                <button onClick={() => setSelectedOrder(null)} className="rounded-xl bg-white/10 p-2"><X size={20} /></button>
+              </div>
+
+              <div className="grid gap-5 p-4 sm:p-7 lg:grid-cols-[1.15fr_0.85fr]">
+                <section className="space-y-4">
+                  <div className="rounded-2xl border border-[#ead8bd] bg-white p-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Info label="Customer" value={selectedOrder.customerName || 'Walk-in customer'} />
+                      <Info label="Phone" value={selectedOrder.customerPhone || 'Not provided'} />
+                      <Info label="Order type" value={statusLabel(selectedOrder.orderType as any)} />
+                      <Info label="Created" value={format(selectedOrder.createdAt, 'dd MMM yyyy, hh:mm a')} />
+                      <Info label="Rider" value={rider?.name || 'Not assigned'} />
+                      <Info label="Payment" value={`${selectedOrder.paymentMethod.replaceAll('_', ' ')} · ${selectedOrder.paymentStatus}`} />
+                    </div>
+                    {selectedOrder.customerAddress && <div className="mt-4 rounded-xl bg-[#fff5e6] p-3 text-sm font-semibold">{selectedOrder.customerAddress}</div>}
+                    {selectedOrder.status === 'cancelled' && (
+                      <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+                        <Ban size={16} className="mr-2 inline" />
+                        {selectedOrder.cancellationReason || 'No cancellation reason recorded'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-[#ead8bd] bg-white p-4">
+                    <h4 className="text-xs font-black uppercase tracking-widest text-[#9b6030]">Items</h4>
+                    <div className="mt-3 divide-y divide-black/5">
+                      {selectedOrder.items.map((item, index) => (
+                        <div key={`${item.itemId}-${index}`} className="flex items-start justify-between gap-3 py-3">
+                          <div>
+                            <p className="font-bold">{item.quantity} × {item.name}</p>
+                            {item.note && <p className="mt-1 text-xs text-black/45">{item.note}</p>}
+                          </div>
+                          <b className="font-mono text-[#9b6030]">{money(item.price * item.quantity)}</b>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex justify-between border-t border-black/10 pt-3 text-lg font-black">
+                      <span>Total</span><span>{money(getFinancials(selectedOrder).total)}</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Summary label="Customer orders" value={history.length} />
+                    <Summary label="Delivered" value={completed.length} />
+                    <div className="col-span-2 rounded-2xl bg-[#1c0905] p-4 text-white">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-[#f4c76a]">Customer lifetime spend</p>
+                      <p className="mt-2 text-2xl font-black">{money(spent)}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-[#ead8bd] bg-white p-4">
+                    <div className="flex items-center gap-2">
+                      <History size={17} className="text-[#9b6030]" />
+                      <h4 className="text-xs font-black uppercase tracking-widest text-[#9b6030]">Customer history</h4>
+                    </div>
+                    <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                      {history.map(item => (
+                        <button
+                          key={item.id}
+                          onClick={() => setSelectedOrder(item)}
+                          className="w-full rounded-xl border border-black/5 bg-[#fffaf4] p-3 text-left transition hover:border-[#f4c76a]"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <b>{item.orderNumber}</b>
+                            <span className={cn('rounded-full px-2 py-1 text-[9px] font-black uppercase', statusTone(item.status))}>{statusLabel(item.status)}</span>
+                          </div>
+                          <div className="mt-2 flex justify-between text-xs text-black/50">
+                            <span>{format(item.createdAt, 'dd MMM yyyy')}</span>
+                            <b className="text-[#9b6030]">{money(getFinancials(item).total)}</b>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {shareOrder && (
         <div style={{ position: 'fixed', left: '-10000px', top: 0, width: 1080, zIndex: -1, pointerEvents: 'none' }}>
@@ -742,6 +936,24 @@ function HeaderStat({ label, value, accent }: { label: string; value: number; ac
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: '10px 16px', minWidth: 72, border: '1px solid rgba(255,255,255,0.10)' }}>
       <span style={{ fontSize: 24, fontWeight: 900, color: accent, fontFamily: 'monospace', lineHeight: 1 }}>{value}</span>
       <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: 4, whiteSpace: 'nowrap' }}>{label}</span>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-widest text-black/35">{label}</p>
+      <p className="mt-1 text-sm font-bold capitalize text-[#24110c]">{value}</p>
+    </div>
+  );
+}
+
+function Summary({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-[#ead8bd] bg-white p-4">
+      <p className="text-2xl font-black text-[#9b6030]">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-black/40">{label}</p>
     </div>
   );
 }

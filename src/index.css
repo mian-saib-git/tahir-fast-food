@@ -462,3 +462,34 @@
     max-height: none !important;
   }
 }
+
+/* Thermal printer safe width for Black Cobra 72mm paper */
+@media print {
+  @page {
+    size: 72mm auto;
+    margin: 0;
+  }
+
+  html,
+  body,
+  #root {
+    width: 72mm !important;
+    min-width: 72mm !important;
+    max-width: 72mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    overflow: visible !important;
+  }
+
+  .thermal-receipt {
+    width: 68mm !important;
+    max-width: 68mm !important;
+    margin: 0 !important;
+    padding: 1.5mm 2mm 2mm 1mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    transform: none !important;
+    page-break-after: auto !important;
+  }
+}

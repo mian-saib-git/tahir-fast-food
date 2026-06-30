@@ -19,3 +19,5 @@ apply-receipt-tweak.mjs
 apply-final-receipt-login.mjs
 .next-updates-backup-*/
 apply-next-updates.mjs
+.thermal-receipt-width-backup-*/
+apply-thermal-receipt-width-fix.mjs

@@ -39,15 +39,20 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
 
   return (
     <div
+      className="thermal-receipt"
       style={{
-        width: '100%',
+        width: '68mm',
+        maxWidth: '68mm',
+        boxSizing: 'border-box',
+        margin: 0,
         background: '#fff',
-        padding: '8px 9px',
+        padding: '6px 2mm 6px 1mm',
         fontFamily: 'monospace',
-        fontSize: '11px',
-        lineHeight: 1.35,
+        fontSize: '10.8px',
+        lineHeight: 1.34,
         color: '#000',
         textAlign: 'left',
+        overflow: 'hidden',
       }}
     >
       <div style={{ textAlign: 'center', borderBottom: dash, paddingBottom: 7 }}>
@@ -56,13 +61,13 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
           alt={`${settings.cafeName} logo`}
           style={{
             display: 'block',
-            width: isCustomer ? 58 : 42,
-            height: isCustomer ? 58 : 42,
+            width: isCustomer ? 54 : 40,
+            height: isCustomer ? 54 : 40,
             objectFit: 'contain',
             margin: '0 auto 4px',
           }}
         />
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, textTransform: 'uppercase' }}>
+        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, textTransform: 'uppercase' }}>
           {settings.cafeName || 'Tahir Fast Food'}
         </h2>
         <p style={{ margin: '3px 0 0', fontSize: 10, fontWeight: 900 }}>
@@ -77,7 +82,7 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
               fontSize: 11,
               fontWeight: 900,
               textTransform: 'uppercase',
-              letterSpacing: 0.8,
+              letterSpacing: 0.7,
             }}
           >
             {isCustomer ? 'Customer Receipt' : 'Kitchen Ticket'}
@@ -98,7 +103,7 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
         <div
           style={{
             marginTop: 1,
-            fontSize: isCustomer ? 19 : 17,
+            fontSize: isCustomer ? 18 : 16,
             lineHeight: 1.1,
             fontWeight: 900,
             wordBreak: 'break-word',
@@ -116,7 +121,7 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
         {order.tableNumber && <Row label="Table" value={<b>{order.tableNumber}</b>} />}
         {rider && <Row label="Rider" value={<b>{rider.name}</b>} />}
         {order.customerAddress && (
-          <div style={{ marginTop: 2 }}>
+          <div style={{ marginTop: 2, wordBreak: 'break-word' }}>
             <b>Address:</b> {order.customerAddress}
           </div>
         )}
@@ -126,8 +131,8 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '8mm 1fr 18mm',
-            gap: 3,
+            gridTemplateColumns: '7mm minmax(0, 1fr) 16mm',
+            gap: 2,
             paddingBottom: 4,
             borderBottom: '1px solid #000',
             fontSize: 9,
@@ -142,15 +147,17 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
 
         {order.items.map((item, index) => (
           <div key={`${item.itemId}-${index}`} style={{ paddingTop: 5 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '8mm 1fr 18mm', gap: 3 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '7mm minmax(0, 1fr) 16mm', gap: 2 }}>
               <b>{safeNumber(item.quantity)}</b>
-              <span style={{ fontWeight: 700, wordBreak: 'break-word' }}>{item.name}</span>
-              <b style={{ textAlign: 'right' }}>
+              <span style={{ fontWeight: 700, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                {item.name}
+              </span>
+              <b style={{ textAlign: 'right', whiteSpace: 'nowrap', fontSize: 10 }}>
                 {rupees(safeNumber(item.price) * safeNumber(item.quantity))}
               </b>
             </div>
             {item.note && (
-              <p style={{ margin: '2px 0 0 8mm', fontSize: 9, fontStyle: 'italic' }}>
+              <p style={{ margin: '2px 0 0 7mm', fontSize: 9, fontStyle: 'italic' }}>
                 Note: {item.note}
               </p>
             )}
@@ -167,15 +174,16 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
             style={{
               display: 'flex',
               justifyContent: 'space-between',
+              gap: 8,
               borderTop: '1px solid #000',
               marginTop: 4,
               paddingTop: 5,
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 900,
             }}
           >
             <span>Total</span>
-            <span>{rupees(total)}</span>
+            <span style={{ whiteSpace: 'nowrap' }}>{rupees(total)}</span>
           </div>
           <Row
             label="Payment"
@@ -202,6 +210,7 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
             textAlign: 'center',
             fontSize: 9,
             lineHeight: 1.45,
+            wordBreak: 'break-word',
           }}
         >
           <div>
@@ -218,13 +227,14 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-      <span>{label}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+      <span style={{ flexShrink: 0 }}>{label}</span>
       <span
         style={{
-          maxWidth: '48mm',
+          maxWidth: '40mm',
           textAlign: 'right',
           wordBreak: 'break-word',
+          overflowWrap: 'anywhere',
           textTransform: label === 'Type' || label === 'Payment' ? 'capitalize' : undefined,
         }}
       >

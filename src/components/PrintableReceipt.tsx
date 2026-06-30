@@ -36,17 +36,18 @@ export default function PrintableReceipt({ order, type }: PrintableReceiptProps)
   const discount = safeNumber(order.discount);
   const total = Math.max(0, subtotal + deliveryFee - discount);
   const dash = '1px dashed #000';
+  const itemGridColumns = '6mm minmax(0, 1fr) 14mm';
 
   return (
     <div
       className="thermal-receipt"
       style={{
-width: '72mm',
-maxWidth: '72mm',
-boxSizing: 'border-box',
-margin: 0,
-background: '#fff',
-padding: '3px 0.5mm',
+        width: '100%',
+        maxWidth: '71mm', // 72mm paper - 0.5mm margin each side
+        boxSizing: 'border-box',
+        margin: '0 auto',
+        background: '#fff',
+        padding: '3px 0.5mm',
         fontFamily: 'monospace',
         fontSize: '10.8px',
         lineHeight: 1.34,
@@ -131,8 +132,8 @@ padding: '3px 0.5mm',
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '6mm minmax(0, 1fr) 15mm',
-gap: 1,
+            gridTemplateColumns: itemGridColumns,
+            gap: 1,
             paddingBottom: 4,
             borderBottom: '1px solid #000',
             fontSize: 9,
@@ -147,8 +148,7 @@ gap: 1,
 
         {order.items.map((item, index) => (
           <div key={`${item.itemId}-${index}`} style={{ paddingTop: 5 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '6mm minmax(0, 1fr) 15mm',
-gap: 1, }}>
+            <div style={{ display: 'grid', gridTemplateColumns: itemGridColumns, gap: 1 }}>
               <b>{safeNumber(item.quantity)}</b>
               <span style={{ fontWeight: 700, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                 {item.name}
@@ -232,7 +232,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <span style={{ flexShrink: 0 }}>{label}</span>
       <span
         style={{
-          maxWidth: '48mm',
+          maxWidth: '46mm',
           textAlign: 'right',
           wordBreak: 'break-word',
           overflowWrap: 'anywhere',
